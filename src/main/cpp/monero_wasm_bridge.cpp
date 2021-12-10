@@ -2,6 +2,7 @@
 #include "monero_wasm_bridge.h"
 #include "wallet/monero_wallet_keys.h"
 #include "utils/monero_utils.h"
+#include "wallet/monero_wallet_model.h"
 #include "wallet/monero_wallet_full.h"
 #include "http_client_wasm.h"
 
@@ -769,6 +770,56 @@ void monero_wasm_bridge::create_txs(int handle, const string& config_json, emscr
     // serialize and return tx set
     callback(txs[0]->m_tx_set.get()->serialize());
   } catch (exception& e) {
+    callback(string(e.what()));
+  }
+}
+
+void monero_wasm_bridge::reconstruct_validate_tx(int handle, const string& multisig_tx_hex, const string& config_json, emscripten::val callback) {
+  monero_wallet* wallet = (monero_wallet*) handle;
+
+
+  try {
+    shared_ptr<monero_tx_config> config = monero_tx_config::deserialize(config_json);
+
+    // config->m_destinations is a vector of shared_ptrs. Let's make it a normal vector of the objects.
+    vector<monero_destination> dests;
+    for (auto i : config->m_destinations) {
+      dests.push_back(*i);
+    }
+
+    vector<shared_ptr<monero_tx_wallet>> txs = wallet->reconstruct_tx(multisig_tx_hex, dests);
+
+    callback(txs[0]->m_tx_set.get()->serialize());
+  } catch (exception& e) {
+    auto err = string("failed to call reconstruct_tx: ") + string(e.what());
+
+    callback(string(e.what()));
+  }
+}
+
+void monero_wasm_bridge::get_multisig_seed(int handle, const string& seed_pass, emscripten::val callback) {
+  monero_wallet* wallet = (monero_wallet*) handle;
+
+  try {
+    std::string seed = wallet->get_multisig_seed(seed_pass);
+    callback(seed);
+  } catch(exception& e) {
+    callback(string(e.what()));
+  }
+}
+
+void monero_wasm_bridge::load_multisig_tx(int handle, const string& multisig_tx_hex, emscripten::val callback) {
+  monero_wallet* wallet = (monero_wallet*) handle;
+  
+  try {
+    monero_tx_config config = wallet->load_multisig_tx(multisig_tx_hex);
+ 
+    std::string serialized = config.serialize();
+
+    callback(serialized);
+  } catch (exception& e) {
+    string err = string("failed to call load_multisig_tx: ") + string(e.what());
+
     callback(string(e.what()));
   }
 }

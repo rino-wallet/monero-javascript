@@ -113,7 +113,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
       if (typeof daemonUriOrConnection === "object") config.setServer(daemonUriOrConnection);
       else config.setServerUri(daemonUriOrConnection);
     }
-    if (config.getProxyToWorker() === undefined) config.setProxyToWorker(true);
+    if (config.getProxyToWorker() === undefined) config.setProxyToWorker(GenUtils.isBrowser());
     if (config.getMnemonic() !== undefined) throw new MoneroError("Cannot specify mnemonic when opening wallet");
     if (config.getSeedOffset() !== undefined) throw new MoneroError("Cannot specify seed offset when opening wallet");
     if (config.getPrimaryAddress() !== undefined) throw new MoneroError("Cannot specify primary address when opening wallet");
@@ -198,7 +198,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
   }
   
   static async _createWalletRandom(path, password, networkType, daemonUriOrConnection, language, proxyToWorker, fs) {
-    if (proxyToWorker === undefined) proxyToWorker = true;
+    if (proxyToWorker === undefined) proxyToWorker = GenUtils.isBrowser();
     if (proxyToWorker) return MoneroWalletFullProxy._createWalletRandom(path, password, networkType, daemonUriOrConnection, language, fs);
     
     // validate and normalize params
@@ -241,7 +241,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
   }
   
   static async _createWalletFromMnemonic(path, password, networkType, mnemonic, daemonUriOrConnection, restoreHeight, seedOffset, proxyToWorker, fs) {
-    if (proxyToWorker === undefined) proxyToWorker = true;
+    if (proxyToWorker === undefined) proxyToWorker = GenUtils.isBrowser();
     if (proxyToWorker) return MoneroWalletFullProxy._createWalletFromMnemonic(path, password, networkType, mnemonic, daemonUriOrConnection, restoreHeight, seedOffset, fs);
     
     // validate and normalize params
@@ -285,7 +285,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
   }
   
   static async _createWalletFromKeys(path, password, networkType, address, viewKey, spendKey, daemonUriOrConnection, restoreHeight, language, proxyToWorker, fs) {
-    if (proxyToWorker === undefined) proxyToWorker = true;
+    if (proxyToWorker === undefined) proxyToWorker = GenUtils.isBrowser();
     if (proxyToWorker) return MoneroWalletFullProxy._createWalletFromKeys(path, password, networkType, address, viewKey, spendKey, daemonUriOrConnection, restoreHeight, language, fs);
     
     // validate and normalize params
@@ -1042,29 +1042,110 @@ class MoneroWalletFull extends MoneroWalletKeys {
   
   async createTxs(config) {
     this._assertNotClosed();
-    
+
     // validate, copy, and normalize config
     config = MoneroWallet._normalizeCreateTxsConfig(config);
     if (config.getCanSplit() === undefined) config.setCanSplit(true);
-    
+
     // return promise which resolves on callback
     let that = this;
     return that._module.queueTask(async function() {
       that._assertNotClosed();
       return new Promise(function(resolve, reject) {
-        
+
         // define callback for wasm
         let callbackFn = function(txSetJsonStr) {
           if (txSetJsonStr.charAt(0) !== '{') reject(new MoneroError(txSetJsonStr)); // json expected, else error
           else resolve(new MoneroTxSet(JSON.parse(GenUtils.stringifyBIs(txSetJsonStr))).getTxs());
         }
-        
+
         // create txs in wasm and invoke callback when done
         that._module.create_txs(that._cppAddress, JSON.stringify(config.toJson()), callbackFn);
       });
     });
   }
+
+  async reconstructValidateTx(multisigTxHex, config) {
+    this._assertNotClosed();
+    
+    // validate, copy, and normalize config
+    config = MoneroWallet._normalizeCreateTxsConfig(config);
+
+    // return promise which resolves on callback
+    let that = this;
+    return that._module.queueTask(async function() {
+      that._assertNotClosed();
+      return new Promise(function(resolve, reject) {
+
+        // define callback for wasm
+        let callbackFn = function(txSetJsonStr) {
+          if (txSetJsonStr.charAt(0) !== '{') reject(new MoneroError(txSetJsonStr)); // json expected, else error
+          else resolve(new MoneroTxSet(JSON.parse(GenUtils.stringifyBIs(txSetJsonStr))).getTxs());
+        }
+
+        // create txs in wasm and invoke callback when done
+        that._module.reconstruct_validate_tx(that._cppAddress, multisigTxHex, JSON.stringify(config.toJson()), callbackFn);
+      });
+    });
+  }
+
+  async getMultisigSeed(seedPass) {
+    this._assertNotClosed();
+
+    // return promise which resolves on callback
+    let that = this;
+    return that._module.queueTask(async function() {
+      that._assertNotClosed();
+
+      return new Promise(function(resolve, reject) {
+
+        // define callback for wasm
+        let callbackFn = function(seed) {
+          if (seed.charAt(0) == '{') {
+            reject(new Error(seed));
+          }
+          
+          if (seed.toLowerCase().startsWith("error")) {
+            reject(new Error(seed));
+          }
+
+          resolve(seed);
+        }
+
+        // get the seed from wasm and invoke callback when ready
+        that._module.get_multisig_seed(that._cppAddress, seedPass, callbackFn);
+      });
+    });
+  }
   
+  async loadMultisigTx(multisigTxHex) {
+    this._assertNotClosed();
+
+    // return promise which resolves on callback
+    let that = this;
+    return that._module.queueTask(async function() {
+      that._assertNotClosed();
+      return new Promise(function(resolve, reject) {
+
+        // define callback for wasm
+        let callbackFn = function(txConfig) {
+          LibraryUtils.setLogLevel(1);
+          LibraryUtils.log(1, "txConfig: " + txConfig);
+          if (txConfig.charAt(0) !== '{') {
+            reject(new MoneroError(txConfig)); // json expected, else error
+          } else {
+            let parsed_config = new MoneroTxConfig(JSON.parse(GenUtils.stringifyBIs(txConfig)));
+            LibraryUtils.log(1, "parsed_config: " + parsed_config);
+            resolve(parsed_config);
+          }
+        }
+
+        // create txs in wasm and invoke callback when done
+        that._module.load_multisig_tx(that._cppAddress, multisigTxHex, callbackFn);
+      });
+    });
+  }
+
   async sweepOutput(config) {
     this._assertNotClosed();
     
@@ -2268,7 +2349,21 @@ class MoneroWalletFullProxy extends MoneroWallet {
     let txSetJson = await this._invokeWorker("createTxs", [config.toJson()]);
     return new MoneroTxSet(txSetJson).getTxs();
   }
-  
+
+  async reconstructValidateTx(multisigTxHex, config) {
+    let txSetJson = await this._invokeWorker("reconstructValidateTx", Array.from(arguments));
+    return new MoneroTxSet(txSetJson).getTxs();
+  }
+
+  async getMultisigSeed(seedPass) {
+    return await this._invokeWorker("getMultisigSeed", Array.from(arguments));
+  }
+
+  async loadMultisigTx(multisigTxHex) {
+    let config = await this._invokeWorker("loadMultisigTx", Array.from(arguments));
+    return new MoneroTxConfig(config);
+  }
+
   async sweepOutput(config) {
     config = MoneroWallet._normalizeSweepOutputConfig(config);
     let txSetJson = await this._invokeWorker("sweepOutput", [config.toJson()]);

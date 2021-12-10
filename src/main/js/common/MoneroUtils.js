@@ -339,6 +339,25 @@ class MoneroUtils {
     let quotientAndRemainder = amountAtomicUnits.divRem(new BigInteger(MoneroUtils.AU_PER_XMR));
     return Number(quotientAndRemainder[0].toJSValue() + quotientAndRemainder[1].toJSValue() / MoneroUtils.AU_PER_XMR);
   }
+
+  /**
+   * Extracts error message from WASM/C++ exception pointer. See this for context:
+   * https://emscripten.org/docs/porting/Debugging.html#handling-c-exceptions-from-javascript
+   * 
+   * @param {number} errAddr memory address where the C++ error is stored
+   * @return {string} the message contained within the C++ error
+   */
+   static extractExceptionMessage(errAddr) {
+    
+    // wasm module must be preloaded
+    if (LibraryUtils.getWasmModule() === undefined) {
+      throw new MoneroError(
+        "WASM module is not loaded; call 'await LibraryUtils.loadKeysModule()' to load"
+      );
+    }
+    
+    return LibraryUtils.getWasmModule().get_exception_message(errAddr)
+  }
 }
 
 MoneroUtils.NUM_MNEMONIC_WORDS = 25;

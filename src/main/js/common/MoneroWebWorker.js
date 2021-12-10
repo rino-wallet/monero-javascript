@@ -748,6 +748,21 @@ self.createTxs = async function(walletId, config) {
   return txs[0].getTxSet().toJson();
 }
 
+self.reconstructValidateTx = async function(walletId, multisigTxHex, config) {
+  let txs = await self.WORKER_OBJECTS[walletId].reconstructValidateTx(multisigTxHex, config);
+  return txs[0].getTxSet().toJson();
+}
+
+self.getMultisigSeed = async function(walletId, seedPass) {
+  let seed = await self.WORKER_OBJECTS[walletId].getMultisigSeed(seedPass);
+  return seed;
+}
+
+self.loadMultisigTx = async function(walletId, multisigTxHex) {
+  let config = await self.WORKER_OBJECTS[walletId].loadMultisigTx(multisigTxHex);
+  return config.toJson();
+}
+
 self.sweepOutput = async function(walletId, config) {
   if (typeof config === "object") config = new MoneroTxConfig(config);
   let tx = await self.WORKER_OBJECTS[walletId].sweepOutput(config);

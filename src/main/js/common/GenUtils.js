@@ -1227,15 +1227,35 @@ class GenUtils {
     });
   }
   
-  /**
+  static isNodeJS() {
+    if (typeof process === 'object') {
+      if (typeof process.versions === 'object') {
+        if (typeof process.versions.node === 'string') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  static isDeno() {
+    if (typeof Deno === 'object') {
+      if (typeof Deno.version === 'object') {
+        if (typeof Deno.version.deno === 'string') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /*
    * Indicates if the current environment is a browser.
    * 
    * @return {boolean} true if the environment is a browser, false otherwise
    */
   static isBrowser() {
-    let isWorker = typeof importScripts === 'function';
-    let isBrowserMain = new Function("try {return this===window;}catch(e){return false;}")();
-    return isWorker || isBrowserMain;
+    return (!this.isNodeJS()) && (!this.isDeno());
   }
   
   /**

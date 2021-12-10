@@ -2,7 +2,6 @@ const assert = require("assert");
 const GenUtils = require("./GenUtils");
 const MoneroError = require("./MoneroError");
 const ThreadPool = require("./ThreadPool");
-const Worker = require("web-worker");
 
 /**
  * Collection of helper utilities for the library.

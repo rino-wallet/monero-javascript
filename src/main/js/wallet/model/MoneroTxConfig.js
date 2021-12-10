@@ -40,6 +40,7 @@ class MoneroTxConfig {
    * @param {BigInteger} config.belowAmount - for sweep requests, include outputs below this amount when sweeping wallet, account, subaddress, or all unlocked funds 
    * @param {boolean} config.sweepEachSubaddress - for sweep requests, sweep each subaddress individually instead of together if true
    * @param {string} config.keyImage - key image to sweep (ignored except in sweepOutput() requests)
+   * @param {boolean} config.skipSigning - do not do put initial partial signature when creating a multisig tx
    */
   constructor(config, relaxValidation) {  // relax validation for internal use to process json from rpc or cpp
     if (arguments.length > 2) throw new MoneroError("MoneroTxConfig can be constructed with only two parameters but was given " + arguments.length)

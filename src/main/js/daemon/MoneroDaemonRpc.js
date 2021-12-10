@@ -872,7 +872,7 @@ class MoneroDaemonRpc extends MoneroDaemon {
       delete config.server;
     }
     if (config.pollInterval === undefined) config.pollInterval = 5000; // TODO: move to config
-    if (config.proxyToWorker === undefined) config.proxyToWorker = true;
+    if (config.proxyToWorker === undefined) config.proxyToWorker = GenUtils.isBrowser();
     return config;
   }
   

@@ -5,7 +5,7 @@ project(monero-javascript-wasm)
 # build with exception whitelist from file
 file(STRINGS wasm_exception_whitelist.txt WASM_EXCEPTION_WHITELIST)
 string(REPLACE ";" "," WASM_EXCEPTION_WHITELIST "${WASM_EXCEPTION_WHITELIST}")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Oz --bind -s EXCEPTION_CATCHING_ALLOWED='[${WASM_EXCEPTION_WHITELIST}]'")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Oz --bind -s DISABLE_EXCEPTION_CATCHING=0")
 add_definitions(-DAUTO_INITIALIZE_EASYLOGGINGPP -DNO_AES)
 
 set(BUILD_MONERO_WALLET_FULL_WASM ON)
@@ -275,6 +275,7 @@ EMCC_LINKER_FLAGS_BASE
 -s EXPORTED_RUNTIME_METHODS='[\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\",\"intArrayToString\",\"getTempRet0\",\"addFunction\"]' \
 -s WASM=1 \
 -s ALLOW_MEMORY_GROWTH=1 \
+-s DISABLE_EXCEPTION_CATCHING=0 \
 "
     # • Disabling exception catching does not introduce silent failures 
     # • Probably don't need PRECISE_F32 but wouldn't want to not use it

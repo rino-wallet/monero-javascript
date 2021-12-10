@@ -1,5 +1,18 @@
 # Monero JavaScript Library
 
+## CSS Specific
+
+### Build Reproducibility
+
+Build Reproducibility is about taking a particular version of the source of this project (input), and always getting the same compilation artifacts (output).
+
+When this project is compiled, it produces a set of `.js` and `.wasm` files, which will then be embedded next to the source, in a `.tgz` file that `npm` can install.
+
+This project tries to prove its build reproducibility by taking the files that will be embeded on the `.tgz`, hashing them together, and putting the hash inside the `.tgz` file, next to some instructions for the user to verify the reproducibility.
+
+The instructions for the users simply ask them to clone the appropriate version of the repo and build a Docker image that reproduces the build+hashing process. The users can then compare the resulting hashes.
+## Summary
+
 A Node.js library for creating Monero applications using RPC and WebAssembly bindings to [monero v0.17.2.3 'Oxygen Orion'](https://github.com/monero-project/monero/tree/v0.17.2.3).
 
 * Supports wallet and daemon RPC clients.

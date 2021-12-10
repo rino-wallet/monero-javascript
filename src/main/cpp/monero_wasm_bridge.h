@@ -100,6 +100,9 @@ namespace monero_wasm_bridge
   void thaw_output(int handle, const string& key_image, emscripten::val callback);
   void is_output_frozen(int handle, const string& key_image, emscripten::val callback);
   void create_txs(int handle, const string& config_json, emscripten::val callback);
+  void reconstruct_validate_tx(int handle, const string& multisig_tx_hex, const string& config_json, emscripten::val callback);
+  void get_multisig_seed(int handle, const string& seed_pass, emscripten::val callback);
+  void load_multisig_tx(int handle, const string& multisig_tx_hex, emscripten::val callback);
   void sweep_output(int handle, const string& config_json, emscripten::val callback);
   void sweep_unlocked(int handle, const string& config_json, emscripten::val callback);
   void sweep_dust(int handle, bool relay, emscripten::val callback);
