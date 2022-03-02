@@ -17,6 +17,7 @@ module.exports.LibraryUtils = require("./src/main/js/common/LibraryUtils");
 module.exports.MoneroRpcConnection = require("./src/main/js/common/MoneroRpcConnection");
 module.exports.MoneroRpcError = require("./src/main/js/common/MoneroRpcError");
 module.exports.SslOptions = require("./src/main/js/common/SslOptions");
+module.exports.TaskLooper = require("./src/main/js/common/TaskLooper");
 
 // export daemon models
 module.exports.ConnectionType = require("./src/main/js/daemon/model/ConnectionType");
@@ -25,11 +26,9 @@ module.exports.MoneroBan = require("./src/main/js/daemon/model/MoneroBan");
 module.exports.MoneroBlockHeader = require("./src/main/js/daemon/model/MoneroBlockHeader");
 module.exports.MoneroBlock = require("./src/main/js/daemon/model/MoneroBlock");
 module.exports.MoneroBlockTemplate = require("./src/main/js/daemon/model/MoneroBlockTemplate");
-module.exports.MoneroDaemonConnection = require("./src/main/js/daemon/model/MoneroDaemonConnection");
-module.exports.MoneroDaemonConnectionSpan = require("./src/main/js/daemon/model/MoneroDaemonConnectionSpan");
+module.exports.MoneroConnectionSpan = require("./src/main/js/daemon/model/MoneroConnectionSpan");
 module.exports.MoneroDaemonInfo = require("./src/main/js/daemon/model/MoneroDaemonInfo");
 module.exports.MoneroDaemonListener = require("./src/main/js/daemon/model/MoneroDaemonListener");
-module.exports.MoneroDaemonPeer = require("./src/main/js/daemon/model/MoneroDaemonPeer");
 module.exports.MoneroDaemonSyncInfo = require("./src/main/js/daemon/model/MoneroDaemonSyncInfo");
 module.exports.MoneroDaemonUpdateCheckResult = require("./src/main/js/daemon/model/MoneroDaemonUpdateCheckResult");
 module.exports.MoneroDaemonUpdateDownloadResult = require("./src/main/js/daemon/model/MoneroDaemonUpdateDownloadResult");
@@ -45,6 +44,7 @@ module.exports.MoneroSubmitTxResult = require("./src/main/js/daemon/model/Monero
 module.exports.MoneroTx = require("./src/main/js/daemon/model/MoneroTx");
 module.exports.MoneroTxPoolStats = require("./src/main/js/daemon/model/MoneroTxPoolStats");
 module.exports.MoneroVersion = require("./src/main/js/daemon/model/MoneroVersion");
+module.exports.MoneroPeer = require("./src/main/js/daemon/model/MoneroPeer");
 
 // export wallet models
 module.exports.MoneroAccount = require("./src/main/js/wallet/model/MoneroAccount");

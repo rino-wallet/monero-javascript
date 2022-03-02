@@ -29,6 +29,3 @@ cd ../../../../ || exit 1
 # build web worker
 npm install || exit 1
 ./bin/build_web_worker.sh || exit 1
-
-# build browser tests
-./bin/build_browser_tests.sh || exit 1

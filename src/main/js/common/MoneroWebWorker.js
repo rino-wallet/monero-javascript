@@ -1,5 +1,6 @@
 const assert = require("assert");
 const GenUtils = require("./GenUtils");
+const HttpClient = require("./HttpClient");
 const LibraryUtils = require("./LibraryUtils");
 const MoneroBan = require("../daemon/model/MoneroBan");
 const MoneroBlock = require("../daemon/model/MoneroBlock");
@@ -55,6 +56,14 @@ self.initOneTime = async function() {
 // --------------------------- STATIC UTILITIES -------------------------------
 
 // TODO: object id not needed for static utilites, using throwaway uuid
+
+self.httpRequest = async function(objectId, opts) {
+  try {
+    return await HttpClient.request(Object.assign(opts, {proxyToWorker: false}));  
+  } catch (err) {
+    throw err.statusCode ? new Error(JSON.stringify({statusCode: err.statusCode, statusMessage: err.message})) : err;
+  }
+}
 
 self.setLogLevel = async function(objectId, level) {
   return LibraryUtils.setLogLevel(level);
@@ -308,16 +317,16 @@ self.daemonResetUploadLimit = async function(daemonId) {
   return self.WORKER_OBJECTS[daemonId].resetUploadLimit();
 }
 
+self.daemonGetPeers = async function(daemonId) {
+  let peersJson = [];
+  for (let peer of await self.WORKER_OBJECTS[daemonId].getPeers()) peersJson.push(peer.toJson());
+  return peersJson;
+}
+
 self.daemonGetKnownPeers = async function(daemonId) {
   let peersJson = [];
   for (let peer of await self.WORKER_OBJECTS[daemonId].getKnownPeers()) peersJson.push(peer.toJson());
   return peersJson;
-}
-
-self.daemonGetConnections = async function(daemonId) {
-  let connectionsJson = [];
-  for (let connection of await self.WORKER_OBJECTS[daemonId].getConnections()) connectionsJson.push(connection.toJson());
-  return connectionsJson;
 }
 
 self.daemonSetOutgoingPeerLimit = async function(daemonId, limit) {
@@ -564,8 +573,8 @@ self.isSynced = async function(walletId) {
   return self.WORKER_OBJECTS[walletId].isSynced();
 }
 
-self.sync = async function(walletId, startHeight) {
-  return await self.WORKER_OBJECTS[walletId].sync(startHeight);
+self.sync = async function(walletId, startHeight, allowConcurrentCalls) {
+  return await self.WORKER_OBJECTS[walletId].sync(undefined, startHeight, allowConcurrentCalls);
 }
 
 self.startSyncing = async function(walletId, syncPeriodInMs) {
@@ -746,6 +755,21 @@ self.createTxs = async function(walletId, config) {
   if (typeof config === "object") config = new MoneroTxConfig(config);
   let txs = await self.WORKER_OBJECTS[walletId].createTxs(config);
   return txs[0].getTxSet().toJson();
+}
+
+self.reconstructValidateTx = async function(walletId, multisigTxHex, config) {
+  let txs = await self.WORKER_OBJECTS[walletId].reconstructValidateTx(multisigTxHex, config);
+  return txs[0].getTxSet().toJson();
+}
+
+self.getMultisigSeed = async function(walletId, seedPass) {
+  let seed = await self.WORKER_OBJECTS[walletId].getMultisigSeed(seedPass);
+  return seed;
+}
+
+self.loadMultisigTx = async function(walletId, multisigTxHex) {
+  let config = await self.WORKER_OBJECTS[walletId].loadMultisigTx(multisigTxHex);
+  return config.toJson();
 }
 
 self.sweepOutput = async function(walletId, config) {

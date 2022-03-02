@@ -674,7 +674,37 @@ class MoneroWallet {
     config.setCanSplit(false);
     return (await this.createTxs(config))[0];
   }
+
+  /**
+   *
+   * @param {string} multisigTxHex - unsigned/partially signed transaction (required)
+   * @param {MoneroTxConfig|object} config - configuration of the original transaction (required).
+   *
+   * Assumes there's only one transaction in multisigTxHex.
+   */
+  async reconstructValidateTx(multisigTxHex, config) {
+    return (await this.reconstructValidateTx(multisigTxHex, config))[0];
+  }
+
+  /**
+   *
+   * @param {string} seedPass - Seed offset passphrase
+   * @return {string} The multisig seed
+   */
+  async getMultisigSeed(seedPass) {
+    throw new MoneroError("Not supported");
+  }
   
+  /**
+   *
+   * @param {string} multisigTxHex - multisig transaction (required)
+   * 
+   * Assumes there's only one transaction in multisigTxHex.
+   */
+  async loadMultisigTx(multisigTxHex) {
+    return (await this.loadMultisigTx(multisigTxHex))[0];
+  }
+
   /**
    * Create one or more transactions to transfer funds from this wallet.
    * 

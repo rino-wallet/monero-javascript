@@ -14,7 +14,6 @@ const BigInteger = monerojs.BigInteger;
 const MoneroNetworkType = monerojs.MoneroNetworkType;
 const MoneroTxWallet = monerojs.MoneroTxWallet;
 const MoneroTxConfig = monerojs.MoneroTxConfig;
-const MoneroRpcConnection = monerojs.MoneroRpcConnection;
 const MoneroDestination = monerojs.MoneroDestination;
 const MoneroOutputQuery = monerojs.MoneroOutputQuery;
 const MoneroOutputWallet = monerojs.MoneroOutputWallet;
@@ -181,56 +180,6 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
       it("Can get the daemon's max peer height", async function() {
         let height = await that.wallet.getDaemonMaxPeerHeight();
         assert(height > 0);
-      });
-      
-      if (testConfig.testNonRelays)
-      it("Can set the daemon connection", async function() {
-        let err;
-        let wallet;
-        try {
-          
-          // create unconnected random wallet
-          wallet = await that.createWallet({serverUri: ""});
-          assert.equal(await wallet.getDaemonConnection(), undefined);
-          
-          // set daemon uri
-          await wallet.setDaemonConnection(TestUtils.DAEMON_RPC_CONFIG.uri);
-          assert.deepEqual((await wallet.getDaemonConnection()).getConfig(), new MoneroRpcConnection(TestUtils.DAEMON_RPC_CONFIG.uri).getConfig());
-          await wallet.setDaemonConnection(TestUtils.DAEMON_RPC_CONFIG.uri, TestUtils.DAEMON_RPC_CONFIG.username, TestUtils.DAEMON_RPC_CONFIG.password, TestUtils.DAEMON_RPC_CONFIG.rejectUnauthorized);
-          assert(await wallet.isConnectedToDaemon());
-          
-          // nullify daemon connection
-          await wallet.setDaemonConnection(undefined);
-          assert.equal(await wallet.getDaemonConnection(), undefined);
-          await wallet.setDaemonConnection(TestUtils.DAEMON_RPC_CONFIG.uri);
-          assert.deepEqual((await wallet.getDaemonConnection()).getConfig(), new MoneroRpcConnection(TestUtils.DAEMON_RPC_CONFIG.uri).getConfig());
-          await wallet.setDaemonConnection(undefined);
-          assert.equal(await wallet.getDaemonConnection(), undefined);
-          
-          // set daemon uri to non-daemon
-          await wallet.setDaemonConnection("www.getmonero.org");
-          assert.deepEqual((await wallet.getDaemonConnection()).getConfig(), new MoneroRpcConnection("www.getmonero.org").getConfig());
-          assert(!await wallet.isConnectedToDaemon());
-          
-          // set daemon to invalid uri
-          await wallet.setDaemonConnection("abc123");
-          assert(!await wallet.isConnectedToDaemon());
-          
-          // attempt to sync
-          try {
-            await wallet.sync();
-            throw new Error("Exception expected");
-          } catch (e1) {
-            assert.equal(e1.message, "Wallet is not connected to daemon");
-          }
-        } catch (e) {
-          err = e;
-        }
-        
-        // close wallet and throw if error occurred
-        if (err) console.log(err);
-        await wallet.close();
-        if (err) throw err;
       });
       
       if (testConfig.testNonRelays)
@@ -401,10 +350,16 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
         
         // create full wallet
         walletName = GenUtils.getUUID();
-        walletFull = await monerojs.createWalletFull(new MoneroWalletConfig().setPath(TestUtils.WALLET_RPC_LOCAL_WALLET_DIR + "/" + walletName).setPassword(TestUtils.WALLET_PASSWORD).setNetworkType(TestUtils.NETWORK_TYPE).setMnemonic(TestUtils.MNEMONIC).setRestoreHeight(TestUtils.FIRST_RECEIVE_HEIGHT).setServer(TestUtils.DAEMON_RPC_CONFIG));
+        let path = TestUtils.WALLET_RPC_LOCAL_WALLET_DIR + "/" + walletName;
+        walletFull = await monerojs.createWalletFull(new MoneroWalletConfig().setPath(path).setPassword(TestUtils.WALLET_PASSWORD).setNetworkType(TestUtils.NETWORK_TYPE).setMnemonic(TestUtils.MNEMONIC).setRestoreHeight(TestUtils.FIRST_RECEIVE_HEIGHT).setServer(TestUtils.DAEMON_RPC_CONFIG));
         await walletFull.sync();
         balance = await walletFull.getBalance();
         outputsHex = await walletFull.exportOutputs();
+        await walletFull.close(true);
+        
+        // rebuild wallet cache using full wallet
+        TestUtils.getDefaultFs().unlinkSync(path);
+        walletFull = await monerojs.openWalletFull(new MoneroWalletConfig().setPath(path).setPassword(TestUtils.WALLET_PASSWORD).setNetworkType(TestUtils.NETWORK_TYPE).setServer(TestUtils.DAEMON_RPC_CONFIG));
         await walletFull.close(true);
         
         // open wallet using monero-wallet-rpc
@@ -423,6 +378,7 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
         // create view-only wallet in wallet rpc process
         let viewOnlyWallet = await TestUtils.startWalletRpcProcess();
         await viewOnlyWallet.createWallet({path: GenUtils.getUUID(), password: TestUtils.WALLET_PASSWORD, primaryAddress: await that.wallet.getPrimaryAddress(), privateViewKey: await that.wallet.getPrivateViewKey(), restoreHeight: TestUtils.FIRST_RECEIVE_HEIGHT});
+        await viewOnlyWallet.sync();
         
         // create offline full wallet
         let offlineWallet = await that.createWallet({primaryAddress: await that.wallet.getPrimaryAddress(), privateViewKey: await that.wallet.getPrivateViewKey(), privateSpendKey: await that.wallet.getPrivateSpendKey(), serverUri: "", restoreHeight: 0});

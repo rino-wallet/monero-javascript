@@ -89,7 +89,7 @@ class TestUtils {
   /**
    * Create a monero-wallet-rpc process bound to the next available port.
    *
-   * @return {MoneroWalletRpc} - client connected to an internal monero-wallet-rpc instance
+   * @return {Promise<MoneroWalletRpc>} - client connected to an internal monero-wallet-rpc instance
    */
   static async startWalletRpcProcess() {
     
@@ -238,6 +238,9 @@ class TestUtils {
 
 // TODO: export these to key/value properties file for tests
 
+// directory with monero binaries to test (monerod and monero-wallet-rpc)
+TestUtils.MONERO_BINS_DIR = "/Applications/monero-x86_64-apple-darwin11-v0.17.3.0";
+
 // test wallet config
 TestUtils.WALLET_NAME = "test_wallet_1";
 TestUtils.WALLET_PASSWORD = "supersecretpassword123";
@@ -248,9 +251,9 @@ TestUtils.MAX_FEE = new BigInteger("7500000").multiply(new BigInteger("10000"));
 TestUtils.NETWORK_TYPE = MoneroNetworkType.STAGENET;
 
 // default keypair to test
-TestUtils.MNEMONIC = "upload toenail nephew megabyte reorder bicycle oxygen relic casket ledge wrist puffin hiding awoken under bovine sarcasm waking faked yoga urban myth atlas basin wrist";
-TestUtils.ADDRESS = "59M2dSSmrKiimFavjWQ8zFGWe6ziHr9XUjhHcMVEj9ut4EdkcmcqawfgMrtEERipUJA8iNzU65eaELoFYcor1c4jK4FRj1N";
-TestUtils.FIRST_RECEIVE_HEIGHT = 46179; // NOTE: this value MUST be the height of the wallet's first tx for tests
+TestUtils.MNEMONIC = "rally adhesive language injury railway pamphlet moisture baptism strained sarcasm across edited omnibus dormant spout keyboard yeti eagle pepper pelican inkling dauntless ashtray bifocals across";
+TestUtils.ADDRESS = "54C3R6CKseodnw7NPafr5ZdCRj1Qa4SYN56cgfozAwCeMj7TZazWe1bip8A5UCPKK7RrpGaP97vsxHabwYEWUCWQTspBZGZ";
+TestUtils.FIRST_RECEIVE_HEIGHT = 6644; // NOTE: this value MUST be the height of the wallet's first tx for tests
 
 // wallet RPC config
 TestUtils.WALLET_RPC_CONFIG = {
@@ -260,7 +263,8 @@ TestUtils.WALLET_RPC_CONFIG = {
   rejectUnauthorized: true // reject self-signed certificates if true
 };
 
-// daemon RPC config
+// daemon config
+TestUtils.DAEMON_LOCAL_PATH = TestUtils.MONERO_BINS_DIR + "/monerod";
 TestUtils.DAEMON_RPC_CONFIG = {
   uri: "http://localhost:38081",
   username: "superuser",
@@ -276,8 +280,8 @@ TestUtils.SYNC_PERIOD_IN_MS = 5000; // period between wallet syncs in millisecon
 // monero-wallet-rpc process management
 TestUtils.WALLET_RPC_PORT_START = 38084;
 TestUtils.WALLET_PORT_OFFSETS = {};
-TestUtils.WALLET_RPC_LOCAL_PATH = "/Applications/monero-x86_64-apple-darwin11-v0.17.2.3/monero-wallet-rpc"; // change as needed
-TestUtils.WALLET_RPC_LOCAL_WALLET_DIR = "/Applications/monero-x86_64-apple-darwin11-v0.17.2.3";
+TestUtils.WALLET_RPC_LOCAL_PATH = TestUtils.MONERO_BINS_DIR + "/monero-wallet-rpc";
+TestUtils.WALLET_RPC_LOCAL_WALLET_DIR = TestUtils.MONERO_BINS_DIR;
 TestUtils.WALLET_RPC_ACCESS_CONTROL_ORIGINS = "http://localhost:8080"; // cors access from web browser
 
 module.exports = TestUtils;

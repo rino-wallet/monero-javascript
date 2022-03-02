@@ -1227,7 +1227,29 @@ class GenUtils {
     });
   }
   
-  /**
+  static isNodeJS() {
+    if (typeof process === 'object') {
+      if (typeof process.versions === 'object') {
+        if (typeof process.versions.node === 'string') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  static isDeno() {
+    if (typeof Deno === 'object') {
+      if (typeof Deno.version === 'object') {
+        if (typeof Deno.version.deno === 'string') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /*
    * Indicates if the current environment is a browser.
    * 
    * @return {boolean} true if the environment is a browser, false otherwise
@@ -1235,7 +1257,8 @@ class GenUtils {
   static isBrowser() {
     let isWorker = typeof importScripts === 'function';
     let isBrowserMain = new Function("try {return this===window;}catch(e){return false;}")();
-    return isWorker || isBrowserMain;
+    let isJsDom = isBrowserMain ? new Function("try {return window.navigator.userAgent.includes('jsdom');}catch(e){return false;}")() : false;
+    return isWorker || (isBrowserMain && !isJsDom);
   }
   
   /**
@@ -1252,7 +1275,7 @@ class GenUtils {
    * 
    * Credit: https://stackoverflow.com/questions/19999388/check-if-user-is-using-ie-with-jquery/21712356#21712356
    * 
-   * @returns the IE version number of null if not IE
+   * @returns the IE version number or null if not IE
    */
   static getIEVersion() {
     let ua = window.navigator.userAgent;
@@ -1489,6 +1512,19 @@ class GenUtils {
    */
   static async waitFor(duration) {
     return new Promise(function(resolve) { setTimeout(resolve, duration); });
+  }
+  
+  /**
+   * Kill the given nodejs child process.
+   * 
+   * @param process is the nodejs child process to kill
+   */
+  static async killProcess(process) {
+    return new Promise(function(resolve, reject) {
+      process.on("exit", function() { resolve(); });
+      process.on("error", function(err) { reject(err); });
+      process.kill("SIGINT");
+    });
   }
 }
 

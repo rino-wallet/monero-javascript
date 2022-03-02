@@ -53,7 +53,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
     assert(path, "Must provide a path to look for a wallet");
     if (!fs) fs = MoneroWalletFull._getFs();
     if (!fs) throw new MoneroError("Must provide file system to check if wallet exists");
-    let exists = fs.existsSync(path); // TODO: look for keys file
+    let exists = fs.existsSync(path + ".keys");
     LibraryUtils.log(1, "Wallet exists at " + path + ": " + exists);
     return exists;
   }
@@ -113,7 +113,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
       if (typeof daemonUriOrConnection === "object") config.setServer(daemonUriOrConnection);
       else config.setServerUri(daemonUriOrConnection);
     }
-    if (config.getProxyToWorker() === undefined) config.setProxyToWorker(true);
+    if (config.getProxyToWorker() === undefined) config.setProxyToWorker(GenUtils.isBrowser());
     if (config.getMnemonic() !== undefined) throw new MoneroError("Cannot specify mnemonic when opening wallet");
     if (config.getSeedOffset() !== undefined) throw new MoneroError("Cannot specify seed offset when opening wallet");
     if (config.getPrimaryAddress() !== undefined) throw new MoneroError("Cannot specify primary address when opening wallet");
@@ -127,9 +127,9 @@ class MoneroWalletFull extends MoneroWalletKeys {
     if (!config.getKeysData()) {
       let fs = config.getFs() ? config.getFs() : MoneroWalletFull._getFs();
       if (!fs) throw new MoneroError("Must provide file system to read wallet data from");
-      if (!await this.walletExists(config.getPath(), fs)) throw new MoneroError("Wallet does not exist at path: " + config.getPath());
+      if (!this.walletExists(config.getPath(), fs)) throw new MoneroError("Wallet does not exist at path: " + config.getPath());
       config.setKeysData(fs.readFileSync(config.getPath() + ".keys"));
-      config.setCacheData(fs.readFileSync(config.getPath()));
+      config.setCacheData(fs.existsSync(config.getPath()) ? fs.readFileSync(config.getPath()) : "");
     }
     
     // open wallet from data
@@ -187,7 +187,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
     if (config.getMnemonic() !== undefined) {
       if (config.getLanguage() !== undefined) throw new MoneroError("Cannot provide language when creating wallet from mnemonic");
       return MoneroWalletFull._createWalletFromMnemonic(config.getPath(), config.getPassword(), config.getNetworkType(), config.getMnemonic(), config.getServer(), config.getRestoreHeight(), config.getSeedOffset(), config.getProxyToWorker(), config.getFs());
-    } else if (config.getPrimaryAddress() !== undefined) {
+    } else if (config.getPrivateSpendKey() !== undefined || config.getPrimaryAddress() !== undefined) {
       if (config.getSeedOffset() !== undefined) throw new MoneroError("Cannot provide seedOffset when creating wallet from keys");
       return MoneroWalletFull._createWalletFromKeys(config.getPath(), config.getPassword(), config.getNetworkType(), config.getPrimaryAddress(), config.getPrivateViewKey(), config.getPrivateSpendKey(), config.getServer(), config.getRestoreHeight(), config.getLanguage(), config.getProxyToWorker(), config.getFs());
     } else {
@@ -198,12 +198,12 @@ class MoneroWalletFull extends MoneroWalletKeys {
   }
   
   static async _createWalletRandom(path, password, networkType, daemonUriOrConnection, language, proxyToWorker, fs) {
-    if (proxyToWorker === undefined) proxyToWorker = true;
+    if (proxyToWorker === undefined) proxyToWorker = GenUtils.isBrowser();
     if (proxyToWorker) return MoneroWalletFullProxy._createWalletRandom(path, password, networkType, daemonUriOrConnection, language, fs);
     
     // validate and normalize params
     if (path === undefined) path = "";
-    if (path && await MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
+    if (path && MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
     assert(password, "Must provide a password to create the wallet with");
     MoneroNetworkType.validate(networkType);
     if (language === undefined) language = "English";
@@ -241,12 +241,12 @@ class MoneroWalletFull extends MoneroWalletKeys {
   }
   
   static async _createWalletFromMnemonic(path, password, networkType, mnemonic, daemonUriOrConnection, restoreHeight, seedOffset, proxyToWorker, fs) {
-    if (proxyToWorker === undefined) proxyToWorker = true;
+    if (proxyToWorker === undefined) proxyToWorker = GenUtils.isBrowser();
     if (proxyToWorker) return MoneroWalletFullProxy._createWalletFromMnemonic(path, password, networkType, mnemonic, daemonUriOrConnection, restoreHeight, seedOffset, fs);
     
     // validate and normalize params
     if (path === undefined) path = "";
-    if (path && await MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
+    if (path && MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
     assert(password, "Must provide a password to create the wallet with");
     MoneroNetworkType.validate(networkType);
     let daemonConnection = typeof daemonUriOrConnection === "string" ? new MoneroRpcConnection(daemonUriOrConnection) : daemonUriOrConnection;
@@ -285,12 +285,12 @@ class MoneroWalletFull extends MoneroWalletKeys {
   }
   
   static async _createWalletFromKeys(path, password, networkType, address, viewKey, spendKey, daemonUriOrConnection, restoreHeight, language, proxyToWorker, fs) {
-    if (proxyToWorker === undefined) proxyToWorker = true;
+    if (proxyToWorker === undefined) proxyToWorker = GenUtils.isBrowser();
     if (proxyToWorker) return MoneroWalletFullProxy._createWalletFromKeys(path, password, networkType, address, viewKey, spendKey, daemonUriOrConnection, restoreHeight, language, fs);
     
     // validate and normalize params
     if (path === undefined) path = "";
-    if (path && await MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
+    if (path && MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
     assert(password, "Must provide a password to create the wallet with");
     MoneroNetworkType.validate(networkType);
     if (address === undefined) address = "";
@@ -508,18 +508,15 @@ class MoneroWalletFull extends MoneroWalletKeys {
     return this._listeners;
   }
   
-  async setDaemonConnection(uriOrRpcConnection, username, password, rejectUnauthorized) {
+  async setDaemonConnection(uriOrRpcConnection) {
     this._assertNotClosed();
     
     // normalize connection
-    let connection = new MoneroRpcConnection(uriOrRpcConnection, username, password, rejectUnauthorized);
-    let uri = connection.getUri();
-    username = connection.getUsername();
-    password = connection.getPassword();
-    rejectUnauthorized = connection.getRejectUnauthorized();
-    if (!uri) uri = "";
-    if (!username) username = "";
-    if (!password) password = "";
+    let connection = !uriOrRpcConnection ? undefined : uriOrRpcConnection instanceof MoneroRpcConnection ? uriOrRpcConnection : new MoneroRpcConnection(uriOrRpcConnection);
+    let uri = connection && connection.getUri() ? connection.getUri() : "";
+    let username = connection && connection.getUsername() ? connection.getUsername() : "";
+    let password = connection && connection.getPassword() ? connection.getPassword() : "";
+    let rejectUnauthorized = connection ? connection.getRejectUnauthorized() : undefined;
     this._rejectUnauthorized = rejectUnauthorized;  // persist locally
     
     // set connection in queue
@@ -663,12 +660,19 @@ class MoneroWalletFull extends MoneroWalletKeys {
     });
   }
   
-  async sync(listenerOrStartHeight, startHeight) {
+  /**
+   * Synchronize the wallet with the daemon as a one-time synchronous process.
+   * 
+   * @param {MoneroWalletListener|number} listenerOrStartHeight - listener xor start height (defaults to no sync listener, the last synced block)
+   * @param {number} startHeight - startHeight if not given in first arg (defaults to last synced block)
+   * @param {bool} allowConcurrentCalls - allow other wallet methods to be processed simultaneously during sync (default false)<br><br><b>WARNING</b>: enabling this option will crash wallet execution if another call makes a simultaneous network request. TODO: possible to sync wasm network requests in http_client_wasm.cpp? 
+   */
+  async sync(listenerOrStartHeight, startHeight, allowConcurrentCalls) {
     this._assertNotClosed();
     if (!(await this.isConnectedToDaemon())) throw new MoneroError("Wallet is not connected to daemon");
     
     // normalize params
-    startHeight = listenerOrStartHeight instanceof MoneroWalletListener ? startHeight : listenerOrStartHeight;
+    startHeight = listenerOrStartHeight === undefined || listenerOrStartHeight instanceof MoneroWalletListener ? startHeight : listenerOrStartHeight;
     let listener = listenerOrStartHeight instanceof MoneroWalletListener ? listenerOrStartHeight : undefined;
     if (startHeight === undefined) startHeight = Math.max(await this.getHeight(), await this.getSyncHeight());
     
@@ -680,7 +684,8 @@ class MoneroWalletFull extends MoneroWalletKeys {
     let result;
     try {
       let that = this;
-      result = await that._module.queueTask(async function() {
+      result = await (allowConcurrentCalls ? syncWasm() : that._module.queueTask(async function() { return syncWasm(); }));
+      function syncWasm() {
         that._assertNotClosed();
         return new Promise(function(resolve, reject) {
         
@@ -696,7 +701,7 @@ class MoneroWalletFull extends MoneroWalletKeys {
           // sync wallet in wasm and invoke callback when done
           that._module.sync(that._cppAddress, startHeight, callbackFn);
         });
-      });
+      }
     } catch (e) {
       err = e;
     }
@@ -1042,29 +1047,107 @@ class MoneroWalletFull extends MoneroWalletKeys {
   
   async createTxs(config) {
     this._assertNotClosed();
-    
+
     // validate, copy, and normalize config
     config = MoneroWallet._normalizeCreateTxsConfig(config);
     if (config.getCanSplit() === undefined) config.setCanSplit(true);
-    
+
     // return promise which resolves on callback
     let that = this;
     return that._module.queueTask(async function() {
       that._assertNotClosed();
       return new Promise(function(resolve, reject) {
-        
+
         // define callback for wasm
         let callbackFn = function(txSetJsonStr) {
           if (txSetJsonStr.charAt(0) !== '{') reject(new MoneroError(txSetJsonStr)); // json expected, else error
           else resolve(new MoneroTxSet(JSON.parse(GenUtils.stringifyBIs(txSetJsonStr))).getTxs());
         }
-        
+
         // create txs in wasm and invoke callback when done
         that._module.create_txs(that._cppAddress, JSON.stringify(config.toJson()), callbackFn);
       });
     });
   }
+
+  async reconstructValidateTx(multisigTxHex, config) {
+    this._assertNotClosed();
+    
+    // validate, copy, and normalize config
+    config = MoneroWallet._normalizeCreateTxsConfig(config);
+
+    // return promise which resolves on callback
+    let that = this;
+    return that._module.queueTask(async function() {
+      that._assertNotClosed();
+      return new Promise(function(resolve, reject) {
+
+        // define callback for wasm
+        let callbackFn = function(txSetJsonStr) {
+          if (txSetJsonStr.charAt(0) !== '{') reject(new MoneroError(txSetJsonStr)); // json expected, else error
+          else resolve(new MoneroTxSet(JSON.parse(GenUtils.stringifyBIs(txSetJsonStr))).getTxs());
+        }
+
+        // create txs in wasm and invoke callback when done
+        that._module.reconstruct_validate_tx(that._cppAddress, multisigTxHex, JSON.stringify(config.toJson()), callbackFn);
+      });
+    });
+  }
+
+  async getMultisigSeed(seedPass) {
+    this._assertNotClosed();
+
+    // return promise which resolves on callback
+    let that = this;
+    return that._module.queueTask(async function() {
+      that._assertNotClosed();
+
+      return new Promise(function(resolve, reject) {
+
+        // define callback for wasm
+        let callbackFn = function(seed) {
+          if (seed.charAt(0) == '{') {
+            reject(new Error(seed));
+          }
+          
+          if (seed.toLowerCase().startsWith("error")) {
+            reject(new Error(seed));
+          }
+
+          resolve(seed);
+        }
+
+        // get the seed from wasm and invoke callback when ready
+        that._module.get_multisig_seed(that._cppAddress, seedPass, callbackFn);
+      });
+    });
+  }
   
+  async loadMultisigTx(multisigTxHex) {
+    this._assertNotClosed();
+
+    // return promise which resolves on callback
+    let that = this;
+    return that._module.queueTask(async function() {
+      that._assertNotClosed();
+      return new Promise(function(resolve, reject) {
+
+        // define callback for wasm
+        let callbackFn = function(txConfig) {
+          if (txConfig.charAt(0) !== '{') {
+            reject(new MoneroError(txConfig)); // json expected, else error
+          } else {
+            let parsed_config = new MoneroTxConfig(JSON.parse(GenUtils.stringifyBIs(txConfig)));
+            resolve(parsed_config);
+          }
+        }
+
+        // create txs in wasm and invoke callback when done
+        that._module.load_multisig_tx(that._cppAddress, multisigTxHex, callbackFn);
+      });
+    });
+  }
+
   async sweepOutput(config) {
     this._assertNotClosed();
     
@@ -1215,6 +1298,28 @@ class MoneroWalletFull extends MoneroWalletKeys {
       let resultJson;
       try {
         resultJson = JSON.parse(that._module.verify_message(that._cppAddress, message, address, signature));
+      } catch (err) {
+        resultJson = {isGood: false};
+      }
+      let result = new MoneroMessageSignatureResult(
+        resultJson.isGood,
+        !resultJson.isGood ? undefined : resultJson.isOld,
+        !resultJson.isGood ? undefined : resultJson.signatureType === "spend" ? MoneroMessageSignatureType.SIGN_WITH_SPEND_KEY : MoneroMessageSignatureType.SIGN_WITH_VIEW_KEY,
+        !resultJson.isGood ? undefined : resultJson.version);
+      return result;
+    });
+  }
+  
+  static async verifyMessageStatic(message, address, signature, networkType) {
+    MoneroNetworkType.validate(networkType);
+    
+    // load wasm module
+    let module = await LibraryUtils.loadFullModule();
+    
+    return module.queueTask(async function() {
+      let resultJson;
+      try {
+        resultJson = JSON.parse(module.verify_message_static(message, address, signature, networkType));
       } catch (err) {
         resultJson = {isGood: false};
       }
@@ -1931,7 +2036,7 @@ class MoneroWalletFullProxy extends MoneroWallet {
   }
   
   static async _createWalletRandom(path, password, networkType, daemonUriOrConnection, language, fs) {
-    if (path && await MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
+    if (path && MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
     let walletId = GenUtils.getUUID();
     let daemonUriOrConfig = daemonUriOrConnection instanceof MoneroRpcConnection ? daemonUriOrConnection.getConfig() : daemonUriOrConnection;
     await LibraryUtils.invokeWorker(walletId, "_createWalletRandom", [path, password, networkType, daemonUriOrConfig, language]);
@@ -1941,7 +2046,7 @@ class MoneroWalletFullProxy extends MoneroWallet {
   }
   
   static async _createWalletFromMnemonic(path, password, networkType, mnemonic, daemonUriOrConnection, restoreHeight, seedOffset, fs) {
-    if (path && await MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
+    if (path && MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
     let walletId = GenUtils.getUUID();
     let daemonUriOrConfig = daemonUriOrConnection instanceof MoneroRpcConnection ? daemonUriOrConnection.getConfig() : daemonUriOrConnection;
     await LibraryUtils.invokeWorker(walletId, "_createWalletFromMnemonic", [path, password, networkType, mnemonic, daemonUriOrConfig, restoreHeight, seedOffset]);
@@ -1951,7 +2056,7 @@ class MoneroWalletFullProxy extends MoneroWallet {
   }
   
   static async _createWalletFromKeys(path, password, networkType, address, viewKey, spendKey, daemonUriOrConnection, restoreHeight, language, fs) {
-    if (path && await MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
+    if (path && MoneroWalletFull.walletExists(path, fs)) throw new Error("Wallet already exists: " + path);
     let walletId = GenUtils.getUUID();
     let daemonUriOrConfig = daemonUriOrConnection instanceof MoneroRpcConnection ? daemonUriOrConnection.getConfig() : daemonUriOrConnection;
     await LibraryUtils.invokeWorker(walletId, "_createWalletFromKeys", [path, password, networkType, address, viewKey, spendKey, daemonUriOrConfig, restoreHeight, language]);
@@ -2041,11 +2146,11 @@ class MoneroWalletFullProxy extends MoneroWallet {
     return new MoneroIntegratedAddress(await this._invokeWorker("decodeIntegratedAddress", Array.from(arguments)));
   }
   
-  async setDaemonConnection(uriOrRpcConnection, username, password) {
+  async setDaemonConnection(uriOrRpcConnection) {
     if (!uriOrRpcConnection) await this._invokeWorker("setDaemonConnection");
     else {
-      let connection = uriOrRpcConnection instanceof MoneroRpcConnection? uriOrRpcConnection : new MoneroRpcConnection({uri: uriOrRpcConnection, username: username, password: password});
-      await this._invokeWorker("setDaemonConnection", connection.getConfig());
+      let connection = !uriOrRpcConnection ? undefined : uriOrRpcConnection instanceof MoneroRpcConnection ? uriOrRpcConnection : new MoneroRpcConnection(uriOrRpcConnection);
+      await this._invokeWorker("setDaemonConnection", connection ? connection.getConfig() : undefined);
     }
   }
   
@@ -2125,7 +2230,7 @@ class MoneroWalletFullProxy extends MoneroWallet {
     return this._invokeWorker("isSynced");
   }
   
-  async sync(listenerOrStartHeight, startHeight) {
+  async sync(listenerOrStartHeight, startHeight, allowConcurrentCalls) {
     
     // normalize params
     startHeight = listenerOrStartHeight instanceof MoneroWalletListener ? startHeight : listenerOrStartHeight;
@@ -2139,7 +2244,7 @@ class MoneroWalletFullProxy extends MoneroWallet {
     let err;
     let result;
     try {
-      let resultJson = await this._invokeWorker("sync", [startHeight]);
+      let resultJson = await this._invokeWorker("sync", [startHeight, allowConcurrentCalls]);
       result = new MoneroSyncResult(resultJson.numBlocksFetched, resultJson.receivedMoney);
     } catch (e) {
       err = e;
@@ -2268,7 +2373,21 @@ class MoneroWalletFullProxy extends MoneroWallet {
     let txSetJson = await this._invokeWorker("createTxs", [config.toJson()]);
     return new MoneroTxSet(txSetJson).getTxs();
   }
-  
+
+  async reconstructValidateTx(multisigTxHex, config) {
+    let txSetJson = await this._invokeWorker("reconstructValidateTx", Array.from(arguments));
+    return new MoneroTxSet(txSetJson).getTxs();
+  }
+
+  async getMultisigSeed(seedPass) {
+    return await this._invokeWorker("getMultisigSeed", Array.from(arguments));
+  }
+
+  async loadMultisigTx(multisigTxHex) {
+    let config = await this._invokeWorker("loadMultisigTx", Array.from(arguments));
+    return new MoneroTxConfig(config);
+  }
+
   async sweepOutput(config) {
     config = MoneroWallet._normalizeSweepOutputConfig(config);
     let txSetJson = await this._invokeWorker("sweepOutput", [config.toJson()]);

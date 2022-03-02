@@ -3,6 +3,7 @@ const TestUtils = require("./utils/TestUtils");
 const monerojs = require("../../index");
 const BigInteger = monerojs.BigInteger;
 const ConnectionType = monerojs.ConnectionType;
+const GenUtils = monerojs.GenUtils;
 const MoneroOutput = monerojs.MoneroOutput;
 const MoneroTxConfig = monerojs.MoneroTxConfig;
 const MoneroBan = monerojs.MoneroBan;
@@ -10,9 +11,8 @@ const MoneroKeyImage = monerojs.MoneroKeyImage;
 const MoneroTx = monerojs.MoneroTx;
 const MoneroAltChain = monerojs.MoneroAltChain;
 const MoneroDaemonListener = monerojs.MoneroDaemonListener;
-const MoneroDaemonConnection = monerojs.MoneroDaemonConnection;
 const MoneroDaemonSyncInfo = monerojs.MoneroDaemonSyncInfo;
-const MoneroDaemonPeer = monerojs.MoneroDaemonPeer;
+const MoneroPeer = monerojs.MoneroPeer;
 const MoneroKeyImageSpentStatus = monerojs.MoneroKeyImageSpentStatus;
 
 // context for testing binary blocks
@@ -52,6 +52,38 @@ class TestMoneroDaemonRpc {
       });
       
       // -------------------------- TEST NON RELAYS ---------------------------
+      
+      if (testConfig.testNonRelays && !GenUtils.isBrowser())
+      it("Can start and stop a daemon process", async function() {
+        
+        // create command to start monerod process
+        let cmd = [
+            TestUtils.DAEMON_LOCAL_PATH,
+            "--" + monerojs.MoneroNetworkType.toString(TestUtils.NETWORK_TYPE).toLowerCase(),
+            "--no-igd",
+            "--hide-my-port",
+            "--data-dir", TestUtils.MONERO_BINS_DIR + "/node1",
+            "--p2p-bind-port", "58080",
+            "--rpc-bind-port", "58081",
+            "--rpc-login", "superuser:abctesting123",
+            "--zmq-rpc-bind-port", "58082"
+        ];
+        
+        // start monerod process from command
+        let daemon = await monerojs.connectToDaemonRpc(cmd);
+        
+        // query daemon
+        let connection = await daemon.getRpcConnection();
+        assert.equal("http://127.0.0.1:58081", connection.getUri());
+        assert.equal("superuser", connection.getUsername());
+        assert.equal("abctesting123", connection.getPassword());
+        assert(await daemon.getHeight() > 0);
+        let info = await daemon.getInfo();
+        testInfo(info);
+        
+        // stop daemon
+        await daemon.stopProcess();
+      });
       
       if (testConfig.testNonRelays)
       it("Can get the daemon's version", async function() {
@@ -804,21 +836,21 @@ class TestMoneroDaemonRpc {
       });
 
       if (testConfig.testNonRelays)
+      it("Can get peers with active incoming or outgoing peers", async function() {
+        let peers = await that.daemon.getPeers();
+        assert(Array.isArray(peers));
+        assert(peers.length > 0, "Daemon has no incoming or outgoing peers to test");
+        for (let peer of peers) {
+          testPeer(peer);
+        }
+      });
+      
+      if (testConfig.testNonRelays)
       it("Can get known peers which may be online or offline", async function() {
         let peers = await that.daemon.getKnownPeers();
         assert(peers.length > 0, "Daemon has no known peers to test");
         for (let peer of peers) {
           testKnownPeer(peer);
-        }
-      });
-      
-      if (testConfig.testNonRelays)
-      it("Can get incoming and outgoing peer connections", async function() {
-        let connections = await that.daemon.getConnections();
-        assert(Array.isArray(connections));
-        assert(connections.length > 0, "Daemon has no incoming or outgoing connections to test");
-        for (let connection of connections) {
-          testDaemonConnection(connection);
         }
       });
       
@@ -1475,22 +1507,21 @@ function testInfo(info) {
   assert(info.getTopBlockHash());
   assert.equal("boolean", typeof info.isBusySyncing());
   assert.equal("boolean", typeof info.isSynchronized());
-  assert.notEqual(info.isBusySyncing(), info.isSynchronized());
 }
 
 function testSyncInfo(syncInfo) { // TODO: consistent naming, daemon in name?
   assert(syncInfo instanceof MoneroDaemonSyncInfo);
   assert(syncInfo.getHeight() >= 0);
-  if (syncInfo.getConnections() !== undefined) {
-    assert(syncInfo.getConnections().length > 0);
-    for (let connection of syncInfo.getConnections()) {
-      testDaemonConnection(connection);
+  if (syncInfo.getPeers() !== undefined) {
+    assert(syncInfo.getPeers().length > 0);
+    for (let peer of syncInfo.getPeers()) {
+      testPeer(peer);
     }
   }
   if (syncInfo.getSpans() !== undefined) {  // TODO: test that this is being hit, so far not used
     assert(syncInfo.getSpans().length > 0);
     for (let span of syncInfo.getSpans()) {
-      testDaemonConnectionSpan(span);
+      testConnectionSpan(span);
     }
   }
   assert(syncInfo.getNextNeededPruningSeed() >= 0);
@@ -1499,7 +1530,7 @@ function testSyncInfo(syncInfo) { // TODO: consistent naming, daemon in name?
   assert.equal(syncInfo.getTopBlockHash(), undefined);
 }
 
-function testDaemonConnectionSpan(span) {
+function testConnectionSpan(span) {
   assert.notEqual(span, undefined);
   assert.notEqual(span.getConnectionId(), undefined);
   assert(span.getConnectionId().length > 0);
@@ -1693,30 +1724,29 @@ function testAltChain(altChain) {
   assert(altChain.getMainChainParentBlockHash().length === 64);
 }
 
-function testDaemonConnection(connection) {
-  assert(connection instanceof MoneroDaemonConnection);
-  assert(connection.getPeer());
-  testKnownPeer(connection.getPeer(), true);
-  assert(connection.getId());
-  assert(connection.getAvgDownload() >= 0);
-  assert(connection.getAvgUpload() >= 0);
-  assert(connection.getCurrentDownload() >= 0);
-  assert(connection.getCurrentUpload() >= 0);
-  assert(connection.getHeight() >= 0);
-  assert(connection.getLiveTime() >= 0);
-  assert.equal(typeof connection.isLocalIp(), "boolean");
-  assert.equal(typeof connection.isLocalHost(), "boolean");
-  assert(connection.getNumReceives() >= 0);
-  assert(connection.getReceiveIdleTime() >= 0);
-  assert(connection.getNumSends() >= 0);
-  assert(connection.getSendIdleTime() >= 0);
-  assert(connection.getState());
-  assert(connection.getNumSupportFlags() >= 0);
-  ConnectionType.validate(connection.getType());
+function testPeer(peer) {
+  assert(peer instanceof MoneroPeer);
+  testKnownPeer(peer, true);
+  assert(peer.getId());
+  assert(peer.getAvgDownload() >= 0);
+  assert(peer.getAvgUpload() >= 0);
+  assert(peer.getCurrentDownload() >= 0);
+  assert(peer.getCurrentUpload() >= 0);
+  assert(peer.getHeight() >= 0);
+  assert(peer.getLiveTime() >= 0);
+  assert.equal(typeof peer.isLocalIp(), "boolean");
+  assert.equal(typeof peer.isLocalHost(), "boolean");
+  assert(peer.getNumReceives() >= 0);
+  assert(peer.getReceiveIdleTime() >= 0);
+  assert(peer.getNumSends() >= 0);
+  assert(peer.getSendIdleTime() >= 0);
+  assert(peer.getState());
+  assert(peer.getNumSupportFlags() >= 0);
+  ConnectionType.validate(peer.getType());
 }
 
 function testKnownPeer(peer, fromConnection) {
-  assert(peer instanceof MoneroDaemonPeer);
+  assert(peer instanceof MoneroPeer);
   assert.equal(typeof peer.getId(), "string");
   assert.equal(typeof peer.getHost(), "string");
   assert(typeof peer.getPort() === "number");

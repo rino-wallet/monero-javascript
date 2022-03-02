@@ -5,7 +5,8 @@ project(monero-javascript-wasm)
 # build with exception whitelist from file
 file(STRINGS wasm_exception_whitelist.txt WASM_EXCEPTION_WHITELIST)
 string(REPLACE ";" "," WASM_EXCEPTION_WHITELIST "${WASM_EXCEPTION_WHITELIST}")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Oz --bind -s EXCEPTION_CATCHING_ALLOWED='[${WASM_EXCEPTION_WHITELIST}]'")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Oz -s EXCEPTION_CATCHING_ALLOWED='[${WASM_EXCEPTION_WHITELIST}]'")
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Oz -s DISABLE_EXCEPTION_CATCHING=0")
 add_definitions(-DAUTO_INITIALIZE_EASYLOGGINGPP -DNO_AES)
 
 set(BUILD_MONERO_WALLET_FULL_WASM ON)
@@ -200,6 +201,7 @@ set(
     ${MONERO_PROJECT_SRC}/ringct/multiexp.cc
     ${MONERO_PROJECT_SRC}/mnemonics/electrum-words.cpp
     ${MONERO_PROJECT}/external/easylogging++/easylogging++.cc
+    ${MONERO_PROJECT_SRC}/net/http.cpp
 )
 
 ################################
@@ -260,7 +262,7 @@ EMCC_LINKER_FLAGS_BASE
 # unsure if the -I...boost..include is necessary here due to include above
 # TODO? does EXPORT_NAME need to be the same for both targets? (or should it be set per-target with …_WASM, …_ASMJS?)
 
-"-Wall -Werror -std=c++11 -Oz \
+"-Wall -Werror -Wl,--allow-undefined -std=c++11 -Oz \
 --bind -s MODULARIZE=1 \
 -s 'EXPORT_NAME=\"monero_javascript\"' \
 -s ERROR_ON_UNDEFINED_SYMBOLS=0 \
@@ -276,12 +278,6 @@ EMCC_LINKER_FLAGS_BASE
 -s WASM=1 \
 -s ALLOW_MEMORY_GROWTH=1 \
 "
-    # • Disabling exception catching does not introduce silent failures 
-    # • Probably don't need PRECISE_F32 but wouldn't want to not use it
-    #
-    #
-    # -s SAFE_HEAP=1 \
-    # -g \
 )
 
 set(

@@ -22,6 +22,7 @@ namespace monero_wasm_bridge
 
   // ------------------------------ UTILITIES ---------------------------------
 
+  string get_integrated_address_util(int network_type, const string& standard_address, const string& payment_id);
   string validate_address(const string& address, int network_type);
   string get_exception_message(int exception_ptr);
   string malloc_binary_from_json(const string& args_string);
@@ -100,6 +101,9 @@ namespace monero_wasm_bridge
   void thaw_output(int handle, const string& key_image, emscripten::val callback);
   void is_output_frozen(int handle, const string& key_image, emscripten::val callback);
   void create_txs(int handle, const string& config_json, emscripten::val callback);
+  void reconstruct_validate_tx(int handle, const string& multisig_tx_hex, const string& config_json, emscripten::val callback);
+  void get_multisig_seed(int handle, const string& seed_pass, emscripten::val callback);
+  void load_multisig_tx(int handle, const string& multisig_tx_hex, emscripten::val callback);
   void sweep_output(int handle, const string& config_json, emscripten::val callback);
   void sweep_unlocked(int handle, const string& config_json, emscripten::val callback);
   void sweep_dust(int handle, bool relay, emscripten::val callback);
@@ -109,6 +113,7 @@ namespace monero_wasm_bridge
   void submit_txs(int handle, const string& signed_tx_hex, emscripten::val callback);
   string sign_message(int handle, const string& msg, uint32_t signature_type_num, uint32_t account_idx, uint32_t subaddress_idx);
   string verify_message(int handle, const string& msg, const string& address, const string& signature);
+  string verify_message_static(const string& msg, const string& address, const string& signature, const int network_type);
   string get_tx_key(int handle, const string& tx_hash);
   void check_tx_key(int handle, const string& tx_hash, const string& tx_key, const string& address, emscripten::val callback);
   void get_tx_proof(int handle, const string& tx_hash, const string& address, const string& message, emscripten::val callback);

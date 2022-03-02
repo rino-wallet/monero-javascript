@@ -14,6 +14,7 @@ const MoneroUtils = monerojs.MoneroUtils;
 const GenUtils = monerojs.GenUtils;
 const MoneroSyncResult = monerojs.MoneroSyncResult;
 const BigInteger = monerojs.BigInteger;
+const MoneroRpcConnection = monerojs.MoneroRpcConnection;
 const MoneroTxQuery = monerojs.MoneroTxQuery;
 const MoneroTransfer = monerojs.MoneroTransfer;
 const MoneroIncomingTransfer = monerojs.MoneroIncomingTransfer;
@@ -296,8 +297,8 @@ class TestMoneroWalletCommon {
           let privateSpendKey = await that.wallet.getPrivateSpendKey();
           
           // recreate test wallet from keys
-          let wallet = await that.createWallet({primaryAddress: primaryAddress, privateViewKey: privateViewKey, privateSpendKey: privateSpendKey, restoreHeight: TestUtils.FIRST_RECEIVE_HEIGHT});
-          let path; try { path = await wallet.getPath(); } catch(e) { }  // TODO: factor out keys-only tests?
+          let wallet = await that.createWallet({primaryAddress: primaryAddress, privateViewKey: privateViewKey, privateSpendKey: privateSpendKey, restoreHeight: await that.daemon.getHeight()});
+          let path; try { path = await wallet.getPath(); } catch(e) { } // TODO: factor out keys-only tests?
           let e2 = undefined;
           try {
             assert.equal(await wallet.getPrimaryAddress(), primaryAddress);
@@ -313,6 +314,27 @@ class TestMoneroWalletCommon {
           }
           await that.closeWallet(wallet);
           if (e2 !== undefined) throw e2;
+          
+          // recreate test wallet from spend key
+          if (!(wallet instanceof MoneroWalletRpc)) { // TODO monero-wallet-rpc: cannot create wallet from spend key?
+            wallet = await that.createWallet({privateSpendKey: privateSpendKey, restoreHeight: await that.daemon.getHeight()});
+            try { path = await wallet.getPath(); } catch(e) { } // TODO: factor out keys-only tests?
+            e2 = undefined;
+            try {
+              assert.equal(await wallet.getPrimaryAddress(), primaryAddress);
+              assert.equal(await wallet.getPrivateViewKey(), privateViewKey);
+              assert.equal(await wallet.getPrivateSpendKey(), privateSpendKey);
+              if (!(wallet instanceof MoneroWalletKeys) && !await wallet.isConnectedToDaemon()) console.log("WARNING: wallet created from keys is not connected to authenticated daemon"); // TODO monero-project: keys wallets not connected
+              if (!(wallet instanceof MoneroWalletRpc)) {
+                assert.equal(await wallet.getMnemonic(), TestUtils.MNEMONIC); // TODO monero-wallet-rpc: cannot get mnemonic from wallet created from keys?
+                assert.equal(await wallet.getMnemonicLanguage(), MoneroWallet.DEFAULT_LANGUAGE);
+              }
+            } catch (e) {
+              e2 = e;
+            }
+            await that.closeWallet(wallet);
+            if (e2 !== undefined) throw e2;
+          }
           
           // attempt to create wallet at same path
           if (path) {
@@ -358,6 +380,58 @@ class TestMoneroWalletCommon {
         // test the attribute
         assert.equal(await wallet.getAttribute("uuid"), uuid);
         await that.closeWallet(wallet);
+      });
+      
+      if (testConfig.testNonRelays)
+      it("Can set the daemon connection", async function() {
+        let err;
+        let wallet;
+        try {
+          
+          // create unconnected random wallet
+          wallet = await that.createWallet({serverUri: ""});
+          assert.equal(await wallet.getDaemonConnection(), undefined);
+          
+          // set daemon uri
+          await wallet.setDaemonConnection(TestUtils.DAEMON_RPC_CONFIG.uri);
+          assert.deepEqual((await wallet.getDaemonConnection()).getConfig(), new MoneroRpcConnection(TestUtils.DAEMON_RPC_CONFIG.uri).getConfig());
+          assert(!await wallet.isConnectedToDaemon());
+          
+          // set daemon with authentication
+          await wallet.setDaemonConnection(TestUtils.DAEMON_RPC_CONFIG);
+          assert(await wallet.isConnectedToDaemon());
+          
+          // nullify daemon connection
+          await wallet.setDaemonConnection(undefined);
+          assert.equal(await wallet.getDaemonConnection(), undefined);
+          await wallet.setDaemonConnection(TestUtils.DAEMON_RPC_CONFIG.uri);
+          assert.deepEqual((await wallet.getDaemonConnection()).getConfig(), new MoneroRpcConnection(TestUtils.DAEMON_RPC_CONFIG.uri).getConfig());
+          await wallet.setDaemonConnection(undefined);
+          assert.equal(await wallet.getDaemonConnection(), undefined);
+          
+          // set daemon uri to non-daemon
+          await wallet.setDaemonConnection("www.getmonero.org");
+          assert.deepEqual((await wallet.getDaemonConnection()).getConfig(), new MoneroRpcConnection("www.getmonero.org").getConfig());
+          assert(!await wallet.isConnectedToDaemon());
+          
+          // set daemon to invalid uri
+          await wallet.setDaemonConnection("abc123");
+          assert(!await wallet.isConnectedToDaemon());
+          
+          // attempt to sync
+          try {
+            await wallet.sync();
+            throw new Error("Exception expected");
+          } catch (e1) {
+            assert.equal(e1.message, "Wallet is not connected to daemon");
+          }
+        } catch (e) {
+          err = e;
+        }
+        
+        // close wallet and throw if error occurred
+        await that.closeWallet(wallet);
+        if (err) throw err;
       });
       
       if (testConfig.testNonRelays)
@@ -2465,7 +2539,7 @@ class TestMoneroWalletCommon {
         let receiverTx = await receiver.getTx(senderTx.getHash());
         if (senderTx.getOutgoingAmount().compare(receiverTx.getIncomingAmount()) !== 0) {
           if (sameAccount) issues.push("WARNING: sender tx outgoing amount != receiver tx incoming amount when sent to same account (" + toStringBI(senderTx.getOutgoingAmount()) + " != " + toStringBI(receiverTx.getIncomingAmount()) + ")");
-          else if (sameAccount) issues.push("ERROR: sender tx outgoing amount != receiver tx incoming amount (" + toStringBI(senderTx.getOutgoingAmount()) + " != " + toStringBI(receiverTx.getIncomingAmount()) + ")");
+          else issues.push("ERROR: sender tx outgoing amount != receiver tx incoming amount (" + toStringBI(senderTx.getOutgoingAmount()) + " != " + toStringBI(receiverTx.getIncomingAmount()) + ")");
         }
         if ((await receiver.getBalance()).compare(receiverBalanceBefore.add(receiverTx.getIncomingAmount() === undefined ? new BigInteger("0") : receiverTx.getIncomingAmount()).subtract(receiverTx.getOutgoingAmount() === undefined ? new BigInteger("0") : receiverTx.getOutgoingAmount()).subtract(sameWallet ? receiverTx.getFee() : new BigInteger("0"))) !== 0) {
           if (sameAccount) issues.push("WARNING: after sending, receiver balance != balance before + incoming amount - outgoing amount - tx fee when sent to same account (" + toStringBI(await receiver.getBalance()) + " != " + toStringBI(receiverBalanceBefore) + " + " + toStringBI(receiverTx.getIncomingAmount()) + " - " + toStringBI(receiverTx.getOutgoingAmount()) + " - " + (sameWallet ? receiverTx.getFee() : new BigInteger("0")).toString() + ")");
@@ -3371,6 +3445,7 @@ class TestMoneroWalletCommon {
         // create view-only and offline wallets
         let viewOnlyWallet = await that.createWallet({primaryAddress: await that.wallet.getPrimaryAddress(), privateViewKey: await that.wallet.getPrivateViewKey(), restoreHeight: TestUtils.FIRST_RECEIVE_HEIGHT});
         let offlineWallet = await that.createWallet({primaryAddress: await that.wallet.getPrimaryAddress(), privateViewKey: await that.wallet.getPrivateViewKey(), privateSpendKey: await that.wallet.getPrivateSpendKey(), serverUri: "", restoreHeight: 0});
+        await viewOnlyWallet.sync();
         
         // test tx signing with wallets
         let err;
@@ -4403,8 +4478,6 @@ class TestMoneroWalletCommon {
     // test sending a multisig transaction if configured
     if (testTx) {
       
-      console.log("Creating account");
-      
       // create an account in the first multisig wallet to receive funds to
       await participant.createAccount();
       
@@ -4633,6 +4706,11 @@ class TestMoneroWalletCommon {
     // wait for txs to confirm and for sufficient unlocked balance
     await TestUtils.WALLET_TX_TRACKER.waitForWalletTxsToClearPool(this.wallet);
     await TestUtils.WALLET_TX_TRACKER.waitForUnlockedBalance(this.wallet, 0, undefined, TestUtils.MAX_FEE.multiply(BigInteger.parse("4")));
+    
+    // test getting txs, transfers, and outputs from view-only wallet
+    assert((await viewOnlyWallet.getTxs()).length, "View-only wallet has no transactions");
+    assert((await viewOnlyWallet.getTransfers()).length, "View-only wallet has no transfers");
+    assert((await viewOnlyWallet.getOutputs()).length, "View-only wallet has no outputs");
     
     // collect info from main test wallet
     let primaryAddress = await this.wallet.getPrimaryAddress();

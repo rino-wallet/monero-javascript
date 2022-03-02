@@ -3,6 +3,7 @@ const BigInteger = require("./biginteger").BigInteger;
 const GenUtils = require("./GenUtils");
 const LibraryUtils = require("./LibraryUtils");
 const MoneroError = require("./MoneroError");
+const MoneroIntegratedAddress = require("../wallet/model/MoneroIntegratedAddress");
 const MoneroNetworkType = require("../daemon/model/MoneroNetworkType");
 
 /**
@@ -18,7 +19,7 @@ class MoneroUtils {
    * @return {string} the version of this monero-javascript library
    */
   static getVersion() {
-    return "0.5.5";
+    return "0.6.2";
   }
   
   /**
@@ -35,51 +36,124 @@ class MoneroUtils {
   }
   
   /**
-   * Validate the given private view key, throw an error if invalid.
-   *
-   * TODO: improve validation
+   * Indicates if a private view key is valid.
    * 
-   * @param {string} privateViewKey - private view key to validate
+   * @param {string} privateViewKey is the private view key to validate
+   * @return {bool} true if the private view key is valid, false otherwise
    */
-  static validatePrivateViewKey(privateViewKey) {
-    assert(typeof privateViewKey === "string");
-    assert(privateViewKey.length === 64);
+  static isValidPrivateViewKey(privateViewKey) {
+    try {
+      MoneroUtils.validatePrivateViewKey(privateViewKey);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
   
   /**
-   * Validate the given private spend key, throw an error if invalid.
-   *
-   * TODO: improve validation
+   * Indicates if a public view key is valid.
    * 
-   * @param {string} privateSpendKey - private spend key to validate
+   * @param {string} publicViewKey is the public view key to validate
+   * @return {bool} true if the public view key is valid, false otherwise
    */
-  static validatePrivateSpendKey(privateSpendKey) {
-    assert(typeof privateSpendKey === "string");
-    assert(privateSpendKey.length === 64);
+  static isValidPublicViewKey(publicViewKey) {
+    try {
+      MoneroUtils.validatePublicViewKey(publicViewKey);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  /**
+   * Indicates if a private spend key is valid.
+   * 
+   * @param {string} privateSpendKey is the private spend key to validate
+   * @return {bool} true if the private spend key is valid, false otherwise
+   */
+  static isValidPrivateSpendKey(privateSpendKey) {
+    try {
+      MoneroUtils.validatePrivateSpendKey(privateSpendKey);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  /**
+   * Indicates if a public spend key is valid.
+   * 
+   * @param {string} publicSpendKey is the public spend key to validate
+   * @return {bool} true if the public spend key is valid, false otherwise
+   */
+  static isValidPublicSpendKey(publicSpendKey) {
+    try {
+      MoneroUtils.validatePublicSpendKey(publicSpendKey);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  /**
+   * Validate the given private view key, throw an error if invalid.
+   *
+   * @param {string} privateViewKey - private view key to validate
+   */
+  static validatePrivateViewKey(privateViewKey) {
+    if (!MoneroUtils._isHex64(privateViewKey)) throw new MoneroError("private view key expected to be 64 hex characters");
   }
   
   /**
    * Validate the given public view key, throw an error if invalid.
    *
-   * TODO: improve validation
-   * 
    * @param {string} publicViewKey - public view key to validate
    */
   static validatePublicViewKey(publicViewKey) {
-    assert(typeof publicViewKey === "string");
-    assert(publicViewKey.length === 64);
+    if (!MoneroUtils._isHex64(publicViewKey)) throw new MoneroError("public view key expected to be 64 hex characters");
+  }
+  
+  /**
+   * Validate the given private spend key, throw an error if invalid.
+   *
+   * @param {string} privateSpendKey - private spend key to validate
+   */
+  static validatePrivateSpendKey(privateSpendKey) {
+    if (!MoneroUtils._isHex64(privateSpendKey)) throw new MoneroError("private spend key expected to be 64 hex characters");
   }
   
   /**
    * Validate the given public spend key, throw an error if invalid.
    *
-   * TODO: improve validation
-   * 
    * @param {string} publicSpendKey - public spend key to validate
    */
   static validatePublicSpendKey(publicSpendKey) {
-    assert(typeof publicSpendKey === "string");
-    assert(publicSpendKey.length === 64);
+    if (!MoneroUtils._isHex64(publicSpendKey)) throw new MoneroError("public spend key expected to be 64 hex characters");
+  }
+  
+  /**
+   * Get an integrated address.
+   * 
+   * @param {MoneroNetworkType} networkType - network type of the integrated address
+   * @param {string} standardAddress - primary address or subaddress for the integrated address
+   * @param {string} paymentId - optionally specifies the integrated address's payment id (defaults to random payment id)
+   * @return {MoneroIntegratedAddress} the integrated address
+   */
+  static getIntegratedAddress(networkType, standardAddress, paymentId) {
+  
+    // validate inputs
+    MoneroNetworkType.validate(networkType);
+    assert(typeof standardAddress === "string", "Address is not string");
+    assert(standardAddress.length > 0, "Address is empty");
+    assert(GenUtils.isBase58(standardAddress), "Address is not base 58");
+  
+    // wasm module must be preloaded
+    if (LibraryUtils.getWasmModule() === undefined) throw new MoneroError("WASM module is not loaded; call 'await LibraryUtils.loadKeysModule()' to load");
+    
+    // get integrated address
+    let integratedAddressJson = LibraryUtils.getWasmModule().get_integrated_address_util(networkType, standardAddress, paymentId ? paymentId : "");
+    if (integratedAddressJson.charAt(0) !== '{') throw new MoneroError(integratedAddressJson);
+    return new MoneroIntegratedAddress(JSON.parse(integratedAddressJson));
   }
   
   /**
@@ -98,7 +172,7 @@ class MoneroUtils {
     try {
       MoneroUtils.validateAddress(address, networkType);
       return true;
-    } catch (e) {
+    } catch (err) {
       return false;
     }
   }
@@ -338,6 +412,29 @@ class MoneroUtils {
     else if (!(amountAtomicUnits instanceof BigInteger)) throw new MoneroError("Must provide atomic units as BigInteger or string to convert to XMR");
     let quotientAndRemainder = amountAtomicUnits.divRem(new BigInteger(MoneroUtils.AU_PER_XMR));
     return Number(quotientAndRemainder[0].toJSValue() + quotientAndRemainder[1].toJSValue() / MoneroUtils.AU_PER_XMR);
+  }
+
+  /**
+   * Extracts error message from WASM/C++ exception pointer. See this for context:
+   * https://emscripten.org/docs/porting/Debugging.html#handling-c-exceptions-from-javascript
+   * 
+   * @param {number} errAddr memory address where the C++ error is stored
+   * @return {string} the message contained within the C++ error
+   */
+  static extractExceptionMessage(errAddr) {
+    
+    // wasm module must be preloaded
+    if (LibraryUtils.getWasmModule() === undefined) {
+      throw new MoneroError(
+        "WASM module is not loaded; call 'await LibraryUtils.loadKeysModule()' to load"
+      );
+    }
+    
+    return LibraryUtils.getWasmModule().get_exception_message(errAddr)
+  } 
+  
+  static _isHex64(str) {
+    return typeof str === "string" && str.length === 64 && GenUtils.isHex(str);
   }
 }
 
