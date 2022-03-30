@@ -1,4 +1,4 @@
 [submodule "external/monero-cpp"]
 	path = external/monero-cpp
-	url = https://github.com/monero-ecosystem/monero-cpp.git
-	ignore = dirty
+	url = https://github.com/rino-wallet/monero-cpp
+	branch = rino
