@@ -1046,6 +1046,13 @@ class MoneroWalletRpc extends MoneroWallet {
     if (config.getCanSplit()) return MoneroWalletRpc._convertRpcSentTxsToTxSet(result, txs).getTxs();
     else return MoneroWalletRpc._convertRpcTxToTxSet(result, txs === undefined ? undefined : txs[0], true).getTxs();
   }
+
+  async reconstructTx(multisigTxHex) {
+    let resp = await this.rpc.sendJsonRequest("reconstruct_transaction", {tx_data_hex: multisigTxHex});
+    let result = resp.result;
+
+    return MoneroWalletRpc._convertRpcTxToTxSet(result, undefined, true).getTxs();
+  }
   
   async sweepOutput(config) {
     

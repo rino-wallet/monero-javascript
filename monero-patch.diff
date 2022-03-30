@@ -1,0 +1,16 @@
+The build instructions of monero-javascript mention that this patch needs to be applied
+to monero-project. See step 5 of the instructions:
+https://github.com/monero-ecosystem/monero-javascript#building-webassembly-binaries-from-source
+diff --git a/src/crypto/wallet/CMakeLists.txt b/src/crypto/wallet/CMakeLists.txt
+index 4ed986dce..a9d896085 100644
+--- a/src/crypto/wallet/CMakeLists.txt
++++ b/src/crypto/wallet/CMakeLists.txt
+@@ -29,7 +29,7 @@
+ #
+ # Possibly user defined values.
+ #
+-set(MONERO_WALLET_CRYPTO_LIBRARY "auto" CACHE STRING "Select a wallet crypto library")
++set(MONERO_WALLET_CRYPTO_LIBRARY "cn" CACHE STRING "Select a wallet crypto library")
+ 
+ #
+ # If the user specified "auto", detect best library defaulting to internal.
