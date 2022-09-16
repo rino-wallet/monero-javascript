@@ -5,7 +5,7 @@ const monerojsOrig = require('monerojs-orig');
 const fs = require('fs');
 
 
-const moneroDaemonUrl = 'stagenet.melo.tools:38081';
+const moneroDaemonUrl = 'stagenet.community.rino.io:38081';
 const moneroNetwork = monerojsFork.MoneroNetworkType.STAGENET;
 const tmpFilesFolder = './tmpWipingCache';
 

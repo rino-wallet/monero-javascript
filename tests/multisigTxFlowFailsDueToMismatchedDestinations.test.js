@@ -55,7 +55,7 @@ test('reconstructValidateTx flow fails due to mismatch between desired and actua
   // We should see a non-zero number of outputs imported to `fe`, because:
   // * `be` was synced and `fe` wasn't
   // * this multisig wallet was pre-funded, so we know it has outputs
-  const importedOutputs = await fe.importOutputs(await be.exportOutputs());
+  const importedOutputs = await fe.importOutputs(await be.exportOutputs(true, true));
   expect(importedOutputs).toBeGreaterThan(0);
 
 
@@ -63,13 +63,13 @@ test('reconstructValidateTx flow fails due to mismatch between desired and actua
   // * `be` was synced and `fe` wasn't, but `fe` imported the outputs of `be` (see import outputs step)
   // * this multisig wallet was pre-funded, so we know it has outputs (see import outputs step)
   console.log('Sending feMultisigInfo to the BE');
-  const feMultisigInfo = await fe.getMultisigHex();
+  const feMultisigInfo = await fe.exportMultisigHex();
   const outputsSignedByBE = await be.importMultisigHex([feMultisigInfo]);
   expect(outputsSignedByBE).toBeGreaterThan(0)
 
   // We cant send  all the funds back to the faucet, because we need to account for fees
   const correctTxConfig = {
-    destinations: [{address: melotoolsStagenetFaucet, amount: `${'0.0009' * 1e12}`}],
+    destinations: [{address: melotoolsStagenetFaucet, amount: `${'0.00001' * 1e12}`}],
     skipSigning: true,
     relay: false,
     accountIndex: 0
@@ -85,7 +85,7 @@ test('reconstructValidateTx flow fails due to mismatch between desired and actua
   // * `be` was synced and `fe` wasn't, but `fe` imported the outputs of `be` (see import outputs step)
   // * this multisig wallet was pre-funded, so we know it has outputs (see import outputs step)
   console.log('Sending beMultisigInfo to the FE');
-  const beMultisigInfo = await be.getMultisigHex();
+  const beMultisigInfo = await be.exportMultisigHex();
   const outputsSignedByFE = await fe.importMultisigHex([beMultisigInfo]);
   expect(outputsSignedByFE).toEqual(outputsSignedByBE);
 

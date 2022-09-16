@@ -6,6 +6,7 @@ const MoneroOutputQuery = require("./model/MoneroOutputQuery");
 const MoneroTransferQuery = require("./model/MoneroTransferQuery");
 const MoneroTxConfig = require("./model/MoneroTxConfig");
 const MoneroTxQuery = require("./model/MoneroTxQuery");
+const MoneroTxSet = require("./model/MoneroTxSet");
 
 /**
  * Copyright (c) woodser
@@ -205,13 +206,15 @@ class MoneroWallet {
   }
   
   /**
-   * Get an integrated address based on this wallet's primary address and the
-   * given payment ID.  Generates a random payment ID if none is given.
+   * Get an integrated address based on the given standard address and payment
+   * ID. Uses the wallet's primary address if an address is not given.
+   * Generates a random payment ID if a payment ID is not given.
    * 
-   * @param {string} paymentId - payment ID to generate an integrated address from (randomly generated if undefined)
+   * @param {string} standardAddress is the standard address to generate the integrated address from (wallet's primary address if undefined)
+   * @param {string} paymentId is the payment ID to generate an integrated address from (randomly generated if undefined)
    * @return {MoneroIntegratedAddress} the integrated address
    */
-  async getIntegratedAddress(paymentId) {
+  async getIntegratedAddress(standardAddress, paymentId) {
     throw new MoneroError("Not supported");
   }
   
@@ -523,7 +526,7 @@ class MoneroWallet {
    * @return {MoneroIncomingTransfer[]} incoming transfers that meet the query
    */
   async getIncomingTransfers(query) {
-    query = new MoneroTransferQuery(query);
+    query = MoneroWallet._normalizeTransferQuery(query);
     if (query.isIncoming() === false) throw new MoneroError("Transfer query contradicts getting incoming transfers");
     query.setIsIncoming(true);
     return this.getTransfers(query);
@@ -544,7 +547,7 @@ class MoneroWallet {
    * @return {MoneroOutgoingTransfer[]} outgoing transfers that meet the query
    */
   async getOutgoingTransfers(query) {
-    query = new MoneroTransferQuery(query);
+    query = MoneroWallet._normalizeTransferQuery(query);
     if (query.isOutgoing() === false) throw new MoneroError("Transfer query contradicts getting outgoing transfers");
     query.setIsOutgoing(true);
     return this.getTransfers(query);
@@ -581,7 +584,7 @@ class MoneroWallet {
    * @param {boolean} all - export all outputs if true, else export the outputs since the last export
    * @return {string} outputs in hex format
    */
-  async exportOutputs(all) {
+  async exportOutputs(all, complete) {
     throw new MoneroError("Not supported");
   }
   
@@ -792,10 +795,30 @@ class MoneroWallet {
   }
   
   /**
+   * Describe a tx set from unsigned tx hex.
+   * 
+   * @param {string} unsignedTxHex - unsigned tx hex
+   * @return {MoneroTxSet} the tx set containing structured transactions
+   */
+  async describeUnsignedTxSet(unsignedTxHex) {
+    return this.describeTxSet(new MoneroTxSet().setUnsignedTxHex(unsignedTxHex));
+  }
+  
+  /**
+   * Describe a tx set from multisig tx hex.
+   * 
+   * @param {string} multisigTxHex - multisig tx hex
+   * @return {MoneroTxSet} the tx set containing structured transactions
+   */
+  async describeMultisigTxSet(multisigTxHex) {
+    return this.describeTxSet(new MoneroTxSet().setMultisigTxHex(multisigTxHex));
+  }
+  
+  /**
    * Describe a tx set containing unsigned or multisig tx hex to a new tx set containing structured transactions.
    * 
    * @param {MoneroTxSet} txSet - a tx set containing unsigned or multisig tx hex
-   * @return {MoneroTxSet} - the tx set containing structured transactions
+   * @return {MoneroTxSet} the tx set containing structured transactions
    */
   async describeTxSet(txSet) {
     throw new MoneroError("Not supported");
@@ -1077,7 +1100,7 @@ class MoneroWallet {
    * @param {MoneroTxConfig} config - specifies configuration for a potential tx
    * @return {string} the payment uri
    */
-  async createPaymentUri(config) {
+  async getPaymentUri(config) {
     throw new MoneroError("Not supported");
   }
   
@@ -1172,7 +1195,7 @@ class MoneroWallet {
    * @param {String[]} multisigHexes - multisig hex from each participant
    * @param {int} threshold - number of signatures needed to sign transfers
    * @param {string} password - wallet password
-   * @return {MoneroMultisigInitResult} the result which has the multisig's address xor this wallet's multisig hex to share with participants iff not N/N
+   * @return {string} this wallet's multisig hex to share with participants
    */
   async makeMultisig(multisigHexes, threshold, password) {
     throw new MoneroError("Not supported");
@@ -1196,8 +1219,8 @@ class MoneroWallet {
    * 
    * @return {string} this wallet's multisig info as hex for other participants
    */
-  async getMultisigHex() {
-    throw new MoneroError("Not supported");
+  async exportMultisigHex() {
+    throw new MoneroError("Not supported?");
   }
   
   /**
@@ -1229,7 +1252,17 @@ class MoneroWallet {
   async submitMultisigTxHex(signedMultisigTxHex) {
     throw new MoneroError("Not supported");
   }
-
+  
+  /**
+   * Change the wallet password.
+   * 
+   * @param {string} oldPassword - the wallet's old password
+   * @param {string} newPassword - the wallet's new password
+   */
+  async changePassword(oldPassword, newPassword) {
+    throw new MoneroError("Not supported");
+  }
+  
   /**
    * Save the wallet at its current path.
    */

@@ -55,24 +55,30 @@ test('reconstructValidateTx flow succeeds', async() => {
   // We should see a non-zero number of outputs imported to `fe`, because:
   // * `be` was synced and `fe` wasn't
   // * this multisig wallet was pre-funded, so we know it has outputs
-  const importedOutputs = await fe.importOutputs(await be.exportOutputs());
+  const importedOutputs = await fe.importOutputs(await be.exportOutputs(true, true));
   expect(importedOutputs).toBeGreaterThan(0);
 
 
   // We should see a non-zero number of outputs signed by the `be` (key images), because:
   // * `be` was synced and `fe` wasn't, but `fe` imported the outputs of `be` (see import outputs step)
   // * this multisig wallet was pre-funded, so we know it has outputs (see import outputs step)
-  const feMultisigInfo = await fe.getMultisigHex();
+  const feMultisigInfo = await fe.exportMultisigHex();
   const outputsSignedByBE = await be.importMultisigHex([feMultisigInfo]);
   expect(outputsSignedByBE).toBeGreaterThan(0)
 
   // We cant send  all the funds back to the faucet, because we need to account for fees
   const correctTxConfig = new monerojs.MoneroTxConfig({
-    destinations: [{address: melotoolsStagenetFaucet, amount: `${'0.0009' * 1e12}`}],
+    destinations: [{address: melotoolsStagenetFaucet, amount: `${'0.00001' * 1e12}`}],
     skipSigning: true,
     relay: false,
     accountIndex: 0
   });
+
+  const balance = await be.getBalance();
+  console.log(`Balance before creating the first Tx: ${balance}`);
+  
+  const unlockedBalance = await be.getUnlockedBalance();
+  console.log(`Unlocked balance before creating the first Tx: ${unlockedBalance}`);
 
   // The BE produces the initial unsigned Tx, which is exported as a hex string
   const unsignedTxs = await be.createTxs(correctTxConfig);
@@ -83,7 +89,7 @@ test('reconstructValidateTx flow succeeds', async() => {
   // number of outputs that `be` signed previously, because:
   // * `be` was synced and `fe` wasn't, but `fe` imported the outputs of `be` (see import outputs step)
   // * this multisig wallet was pre-funded, so we know it has outputs (see import outputs step)
-  const beMultisigInfo = await be.getMultisigHex();
+  const beMultisigInfo = await be.exportMultisigHex();
   const outputsSignedByFE = await fe.importMultisigHex([beMultisigInfo]);
   expect(outputsSignedByFE).toEqual(outputsSignedByBE);
 

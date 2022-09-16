@@ -56,8 +56,11 @@ class MoneroRpcConnection {
     // merge default config
     this._config = Object.assign({}, MoneroRpcConnection.DEFAULT_CONFIG, this._config);
     
-    // standardize uri
-    if (this._config.uri) this._config.uri = this._config.uri.replace(/\/$/, ""); // strip trailing slash
+    // normalize uri
+    if (this._config.uri) {
+      this._config.uri = this._config.uri.replace(/\/$/, ""); // strip trailing slash
+      if (!new RegExp("^\\w+://.+").test(this._config.uri)) this._config.uri = "http://" + this._config.uri; // assume http if protocol not given
+    }
     
     // fail with friendly message if using old api
     if (this._config.user || this._config.pass) throw new MoneroError("Authentication fields 'user' and 'pass' have been renamed to 'username' and 'password'.  Please update to the new api");
@@ -71,6 +74,8 @@ class MoneroRpcConnection {
   }
   
   setCredentials(username, password) {
+    if (username === "") username = undefined;
+    if (password === "") password = undefined;
     if (username || password) {
       if (!username) throw new MoneroError("username must be defined because password is defined");
       if (!password) throw new MoneroError("password must be defined because username is defined");
@@ -89,11 +94,11 @@ class MoneroRpcConnection {
   }
   
   getUsername() {
-    return this._config.username;
+    return this._config.username ? this._config.username : "";
   }
   
   getPassword() {
-    return this._config.password;
+    return this._config.password ? this._config.password : "";
   }
   
   getRejectUnauthorized() {
@@ -169,14 +174,35 @@ class MoneroRpcConnection {
     return isOnlineBefore !== this._isOnline || isAuthenticatedBefore !== this._isAuthenticated;
   }
   
+  /**
+   * Indicates if the connection is connected according to the last call to checkConnection().<br><br>
+   * 
+   * Note: must call checkConnection() manually unless using MoneroConnectionManager.
+   * 
+   * @return {boolean|undefined} true or false to indicate if connected, or undefined if checkConnection() has not been called
+   */
   isConnected() {
-    return this._isOnline && this._isAuthenticated !== false;
+    return this._isOnline === undefined ? undefined : this._isOnline && this._isAuthenticated !== false;
   }
-  
+
+  /**
+   * Indicates if the connection is online according to the last call to checkConnection().<br><br>
+   * 
+   * Note: must call checkConnection() manually unless using MoneroConnectionManager.
+   * 
+   * @return {boolean|undefined} true or false to indicate if online, or undefined if checkConnection() has not been called
+   */
   isOnline() {
     return this._isOnline;
   }
 
+  /**
+   * Indicates if the connection is authenticated according to the last call to checkConnection().<br><br>
+   * 
+   * Note: must call checkConnection() manually unless using MoneroConnectionManager.
+   * 
+   * @return {boolean|undefined} true if authenticated or no authentication, false if not authenticated, or undefined if checkConnection() has not been called
+   */
   isAuthenticated() {
     return this._isAuthenticated;
   }
@@ -296,11 +322,8 @@ class MoneroRpcConnection {
    */
   async sendBinaryRequest(path, params, timeoutInMs) {
     
-    // load wasm module
-    await LibraryUtils.loadKeysModule();
-    
     // serialize params
-    let paramsBin = MoneroUtils.jsonToBinary(params);
+    let paramsBin = await MoneroUtils.jsonToBinary(params);
     
     try {
       

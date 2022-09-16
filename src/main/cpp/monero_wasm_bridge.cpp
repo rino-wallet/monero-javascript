@@ -87,7 +87,7 @@ string monero_wasm_bridge::validate_address(const string& address, int network_t
 {
   try {
     monero_utils::validate_address(address, static_cast<monero_network_type>(network_type));
-    return "";
+    return string("");
   } catch (exception& e) {
     return string(e.what());
   }
@@ -157,7 +157,7 @@ string monero_wasm_bridge::binary_blocks_to_json(const std::string &bin_mem_info
 
 // -------------------------- STATIC WALLET UTILS -----------------------------
 
-void monero_wasm_bridge::open_full_wallet(const string& password, int network_type, const string& keys_data, const string& cache_data, const string& daemon_uri, const string& daemon_username, const string& daemon_password, const string& reject_unauthorized_fn_id, emscripten::val callback) {
+void monero_wasm_bridge::open_wallet_full(const string& password, int network_type, const string& keys_data, const string& cache_data, const string& daemon_uri, const string& daemon_username, const string& daemon_password, const string& reject_unauthorized_fn_id, emscripten::val callback) {
 #if defined BUILD_WALLET_FULL
   try {
     monero_rpc_connection daemon_connection = monero_rpc_connection(daemon_uri, daemon_username, daemon_password);
@@ -340,16 +340,24 @@ string monero_wasm_bridge::get_address_index(int handle, const string& address) 
   }
 }
 
-string monero_wasm_bridge::get_integrated_address(int handle, const string& standardAddress, const string& payment_id) {
+string monero_wasm_bridge::get_integrated_address(int handle, const string& standard_address, const string& payment_id) {
   monero_wallet* wallet = (monero_wallet*) handle;
-  monero_integrated_address integrated_address = wallet->get_integrated_address(standardAddress, payment_id);
-  return integrated_address.serialize();
+  try {
+    monero_integrated_address integrated_address = wallet->get_integrated_address(standard_address, payment_id);
+    return integrated_address.serialize();
+  } catch (exception& e) {
+    return string(e.what());
+  }
 }
 
 string monero_wasm_bridge::decode_integrated_address(int handle, const string& integrated_address_str) {
   monero_wallet* wallet = (monero_wallet*) handle;
-  monero_integrated_address integrated_address = wallet->decode_integrated_address(integrated_address_str);
-  return integrated_address.serialize();
+  try {
+    monero_integrated_address integrated_address = wallet->decode_integrated_address(integrated_address_str);
+    return integrated_address.serialize();
+  } catch (exception& e) {
+    return string(e.what());
+  }
 }
 
 void monero_wasm_bridge::get_height(int handle, emscripten::val callback) {
@@ -692,10 +700,10 @@ void monero_wasm_bridge::get_outputs(int handle, const string& output_query_json
   }
 }
 
-void monero_wasm_bridge::export_outputs(int handle, bool all, emscripten::val callback) {
+void monero_wasm_bridge::export_outputs(int handle, bool all, bool complete, emscripten::val callback) {
   monero_wallet* wallet = (monero_wallet*) handle;
   try {
-    callback(wallet->export_outputs(all));
+    callback(wallet->export_outputs(all, complete));
   } catch (exception& e) {
     callback(string(e.what()));
   }
@@ -1142,10 +1150,10 @@ void monero_wasm_bridge::set_account_tag_label(int handle, const string& tag, co
   throw runtime_error("Not implemented");
 }
 
-string monero_wasm_bridge::create_payment_uri(int handle, const string& config_json) {
+string monero_wasm_bridge::get_payment_uri(int handle, const string& config_json) {
   monero_wallet* wallet = (monero_wallet*) handle;
   shared_ptr<monero_tx_config> config = monero_tx_config::deserialize(config_json);
-  return wallet->create_payment_uri(*config);
+  return wallet->get_payment_uri(*config);
 }
 
 string monero_wasm_bridge::parse_payment_uri(int handle, const string& uri) {
@@ -1198,7 +1206,7 @@ string monero_wasm_bridge::make_multisig(int handle, const string& args) {
   string password = node.get_child("password").get_value<string>();
 
   // make multisig
-  return wallet->make_multisig(multisig_hexes, threshold, password).serialize();
+  return wallet->make_multisig(multisig_hexes, threshold, password);
 }
 
 string monero_wasm_bridge::exchange_multisig_keys(int handle, const string& args) {
@@ -1222,9 +1230,9 @@ string monero_wasm_bridge::exchange_multisig_keys(int handle, const string& args
   return wallet->exchange_multisig_keys(multisig_hexes, password).serialize();
 }
 
-string monero_wasm_bridge::get_multisig_hex(int handle) {
+string monero_wasm_bridge::export_multisig_hex(int handle) {
   monero_wallet* wallet = (monero_wallet*) handle;
-  return wallet->get_multisig_hex();
+  return wallet->export_multisig_hex();
 }
 
 void monero_wasm_bridge::import_multisig_hex(int handle, const string& args, emscripten::val callback) {
@@ -1269,6 +1277,16 @@ void monero_wasm_bridge::submit_multisig_tx_hex(int handle, const string& signed
     doc.SetObject();
     doc.AddMember("txHashes", monero_utils::to_rapidjson_val(doc.GetAllocator(), tx_hashes), doc.GetAllocator());
     callback(monero_utils::serialize(doc));
+  } catch (exception& e) {
+    callback(string(e.what()));
+  }
+}
+
+void monero_wasm_bridge::change_wallet_password(int handle, const string& old_password, const string& new_password, emscripten::val callback) {
+  monero_wallet* wallet = (monero_wallet*) handle;
+  try {
+    wallet->change_password(old_password, new_password);
+    callback();
   } catch (exception& e) {
     callback(string(e.what()));
   }

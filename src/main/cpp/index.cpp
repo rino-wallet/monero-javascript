@@ -18,7 +18,7 @@ EMSCRIPTEN_BINDINGS(module)
 
   // --------------------------- WALLET CREATION ------------------------------
 
-  emscripten::function("open_full_wallet", &monero_wasm_bridge::open_full_wallet);
+  emscripten::function("open_wallet_full", &monero_wasm_bridge::open_wallet_full);
   emscripten::function("create_full_wallet_random", &monero_wasm_bridge::create_full_wallet_random);
   emscripten::function("create_full_wallet_from_mnemonic", &monero_wasm_bridge::create_full_wallet_from_mnemonic);
   emscripten::function("create_full_wallet_from_keys", &monero_wasm_bridge::create_full_wallet_from_keys);
@@ -115,7 +115,7 @@ EMSCRIPTEN_BINDINGS(module)
   emscripten::function("untag_accounts", &monero_wasm_bridge::untag_accounts);
   emscripten::function("get_account_tags", &monero_wasm_bridge::get_account_tags);
   emscripten::function("set_account_tag_label", &monero_wasm_bridge::set_account_tag_label);
-  emscripten::function("create_payment_uri", &monero_wasm_bridge::create_payment_uri);
+  emscripten::function("get_payment_uri", &monero_wasm_bridge::get_payment_uri);
   emscripten::function("parse_payment_uri", &monero_wasm_bridge::parse_payment_uri);
   emscripten::function("get_attribute", &monero_wasm_bridge::get_attribute);
   emscripten::function("set_attribute", &monero_wasm_bridge::set_attribute);
@@ -124,12 +124,13 @@ EMSCRIPTEN_BINDINGS(module)
   emscripten::function("prepare_multisig", &monero_wasm_bridge::prepare_multisig);
   emscripten::function("make_multisig", &monero_wasm_bridge::make_multisig);
   emscripten::function("exchange_multisig_keys", &monero_wasm_bridge::exchange_multisig_keys);
-  emscripten::function("get_multisig_hex", &monero_wasm_bridge::get_multisig_hex);
+  emscripten::function("export_multisig_hex", &monero_wasm_bridge::export_multisig_hex);
   emscripten::function("import_multisig_hex", &monero_wasm_bridge::import_multisig_hex);
   emscripten::function("sign_multisig_tx_hex", &monero_wasm_bridge::sign_multisig_tx_hex);
   emscripten::function("submit_multisig_tx_hex", &monero_wasm_bridge::submit_multisig_tx_hex);
   emscripten::function("get_keys_file_buffer", &monero_wasm_bridge::get_keys_file_buffer);
   emscripten::function("get_cache_file_buffer", &monero_wasm_bridge::get_cache_file_buffer);
+  emscripten::function("change_wallet_password", &monero_wasm_bridge::change_wallet_password);
   emscripten::function("close", &monero_wasm_bridge::close);
 }
 extern "C"

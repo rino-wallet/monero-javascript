@@ -187,8 +187,8 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
         
         // create unconnected random wallet
         let wallet = await that.createWallet({networkType: MoneroNetworkType.MAINNET, serverUri: ""});
-        MoneroUtils.validateMnemonic(await wallet.getMnemonic());
-        MoneroUtils.validateAddress(await wallet.getPrimaryAddress(), MoneroNetworkType.MAINNET);
+        await MoneroUtils.validateMnemonic(await wallet.getMnemonic());
+        await MoneroUtils.validateAddress(await wallet.getPrimaryAddress(), MoneroNetworkType.MAINNET);
         assert.equal(await wallet.getNetworkType(), MoneroNetworkType.MAINNET);
         assert.equal(await wallet.getDaemonConnection(), undefined);
         assert(!(await wallet.isConnectedToDaemon()));
@@ -212,9 +212,9 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
         await wallet.close();
 
         // create random wallet with non defaults
-        wallet = await that.createWallet({networkType: MoneroNetworkType.TESTNET, language: "Spanish"});
-        MoneroUtils.validateMnemonic(await wallet.getMnemonic());
-        MoneroUtils.validateAddress(await wallet.getPrimaryAddress(), MoneroNetworkType.TESTNET);
+        wallet = await that.createWallet({networkType: MoneroNetworkType.TESTNET, language: "Spanish"}, false);
+        await MoneroUtils.validateMnemonic(await wallet.getMnemonic());
+        await MoneroUtils.validateAddress(await wallet.getPrimaryAddress(), MoneroNetworkType.TESTNET);
         assert.equal(await wallet.getNetworkType(), await MoneroNetworkType.TESTNET);
         assert(await wallet.getDaemonConnection());
         assert((await that.daemon.getRpcConnection()).getConfig() !== (await wallet.getDaemonConnection()).getConfig());         // not same reference
@@ -275,7 +275,7 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
         assert.equal(await wallet.getMnemonicLanguage(), "English");
         assert.equal(await wallet.getHeight(), 1); // TODO monero-project: why does height of new unsynced wallet start at 1?
         assert.equal(await wallet.getSyncHeight(), restoreHeight);
-        let path = await await wallet.getPath();
+        let path = await wallet.getPath();
         await wallet.close(true);
         wallet = await that.openWallet({path: path, serverUri: ""});
         assert(!(await wallet.isConnectedToDaemon()));
@@ -425,7 +425,7 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
       // TODO monero-project: cannot re-sync from lower block height after wallet saved
       if (testConfig.testNonRelays && !testConfig.liteMode && false)
       it("Can re-sync an existing wallet from scratch", async function() {
-        let wallet = await that.openWallet({path: TestUtils.WALLET_FULL_PATH, password: TestUtils.WALLET_PASSWORD, networkType: MoneroNetworkType.STAGENET});  // wallet must already exist
+        let wallet = await that.openWallet({path: TestUtils.WALLET_FULL_PATH, password: TestUtils.WALLET_PASSWORD, networkType: MoneroNetworkType.TESTNET});  // wallet must already exist
         await wallet.setDaemonConnection(TestUtils.getDaemonRpcConnection());
         //long startHeight = TestUtils.TEST_RESTORE_HEIGHT;
         let startHeight = 0;
@@ -877,33 +877,31 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
           for (let j = 0; j < wallets.length; j++) if (j !== i) peerMultisigHexes.push(preparedMultisigHexes[j]);
         
           // make wallet multisig and collect result hex
-          let result = await wallets[i].makeMultisig(peerMultisigHexes, M, TestUtils.WALLET_PASSWORD);
-          madeMultisigHexes.push(result.getMultisigHex());
+          let multisigHex = await wallets[i].makeMultisig(peerMultisigHexes, M, TestUtils.WALLET_PASSWORD);
+          madeMultisigHexes.push(multisigHex);
         }
         
-        // if wallet is not N/N, exchange multisig keys N-M times
-        if (M !== N) {
-          let multisigHexes = madeMultisigHexes;
-          for (let i = 0; i < N - M; i++) {
+        // exchange multisig keys N - M + 1 times
+        let multisigHexes = madeMultisigHexes;
+        for (let i = 0; i < N - M + 1; i++) {
+          
+          // exchange multisig keys among participants and collect results for next round if applicable
+          let resultMultisigHexes = [];
+          for (let wallet of wallets) {
             
-            // exchange multisig keys among participants and collect results for next round if applicable
-            let resultMultisigHexes = [];
-            for (let wallet of wallets) {
-              
-              // import the multisig hex of other participants and collect results
-              let result = await wallet.exchangeMultisigKeys(multisigHexes, TestUtils.WALLET_PASSWORD);
-              resultMultisigHexes.push(result.getMultisigHex());
-            }
-            
-            // use resulting multisig hex for next round of exchange if applicable
-            multisigHexes = resultMultisigHexes;
+            // import the multisig hex of other participants and collect results
+            let result = await wallet.exchangeMultisigKeys(multisigHexes, TestUtils.WALLET_PASSWORD);
+            resultMultisigHexes.push(result.getMultisigHex());
           }
+          
+          // use resulting multisig hex for next round of exchange if applicable
+          multisigHexes = resultMultisigHexes;
         }
         
         // wallets are now multisig
         for (let wallet of wallets) {
           let primaryAddress = await wallet.getAddress(0, 0);
-          MoneroUtils.validateAddress(primaryAddress, await wallet.getNetworkType());
+          await MoneroUtils.validateAddress(primaryAddress, await wallet.getNetworkType());
           let info = await wallet.getMultisigInfo();
           assert(info.isMultisig());
           assert(info.isReady());
@@ -922,10 +920,10 @@ class TestMoneroWalletFull extends TestMoneroWalletCommon {
         // wallet does not exist
         assert(!(await MoneroWalletFull.walletExists(path, TestUtils.getDefaultFs())));
         
-        // cannot open non-existant wallet
+        // cannot open non-existent wallet
         try {
           await that.openWallet({path: path, serverUri: ""});
-          throw new Error("Cannot open non-existant wallet");
+          throw new Error("Cannot open non-existent wallet");
         } catch (e) {
           assert.equal(e.message, "Wallet does not exist at path: " + path);
         }

@@ -1,4 +1,4 @@
-FROM ubuntu
+FROM ubuntu:20.04
 SHELL ["/bin/bash", "-c"]
 
 WORKDIR /home
