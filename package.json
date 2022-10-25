@@ -1,7 +1,7 @@
 {
   "name": "@rino-wallet/monero-javascript",
   "description": "A JavaScript library for using Monero",
-  "version": "0.0.31",
+  "version": "0.0.32",
   "license": "MIT",
   "repository": "https://github.com/rino-wallet/monero-javascript",
   "private": false,
