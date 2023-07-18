@@ -200,12 +200,15 @@ class MoneroWalletRpc extends MoneroWallet {
   
   /**
    * Stop the internal process running monero-wallet-rpc, if applicable.
+   * 
+   * @param {boolean} force specifies if the process should be destroyed forcibly
+   * @return {Promise<number|undefined>} the exit code from stopping the process
    */
-  async stopProcess() {
+  async stopProcess(force) {
     if (this.process === undefined) throw new MoneroError("MoneroWalletRpc instance not created from new process");
     let listenersCopy = GenUtils.copyArray(this.getListeners());
     for (let listener of listenersCopy) await this.removeListener(listener);
-    return GenUtils.killProcess(this.process);
+    return GenUtils.killProcess(this.process, force ? "sigkill" : undefined);
   }
   
   /**
@@ -307,6 +310,7 @@ class MoneroWalletRpc extends MoneroWallet {
       throw new MoneroError("Wallet may be initialized with a mnemonic or keys but not both");
     }
     if (config.getNetworkType() !== undefined) throw new MoneroError("Cannot provide networkType when creating RPC wallet because server's network type is already set");
+    if (config.getAccountLookahead() !== undefined || config.getSubaddressLookahead() !== undefined) throw new MoneroError("monero-wallet-rpc does not support creating wallets with subaddress lookahead over rpc");
     
     // create wallet
     if (config.getMnemonic() !== undefined) {
@@ -602,7 +606,7 @@ class MoneroWalletRpc extends MoneroWallet {
   async sync(startHeight, onProgress) {
     assert(onProgress === undefined, "Monero Wallet RPC does not support reporting sync progress");
     try {
-      let resp = await this.rpc.sendJsonRequest("refresh", {start_height: startHeight});
+      let resp = await this.rpc.sendJsonRequest("refresh", {start_height: startHeight}, 0);
       await this._poll();
       return new MoneroSyncResult(resp.result.blocks_fetched, resp.result.received_money);
     } catch (err) {
@@ -634,12 +638,18 @@ class MoneroWalletRpc extends MoneroWallet {
     return this.rpc.sendJsonRequest("auto_refresh", { enable: false });
   }
   
+  async scanTxs(txHashes) {
+    if (!txHashes || !txHashes.length) throw new MoneroError("No tx hashes given to scan");
+    await this.rpc.sendJsonRequest("scan_tx", {txids: txHashes});
+    await this._poll();
+  }
+  
   async rescanSpent() {
-    await this.rpc.sendJsonRequest("rescan_spent");
+    await this.rpc.sendJsonRequest("rescan_spent", undefined, 0);
   }
   
   async rescanBlockchain() {
-    await this.rpc.sendJsonRequest("rescan_blockchain");
+    await this.rpc.sendJsonRequest("rescan_blockchain", undefined, 0);
   }
   
   async getBalance(accountIdx, subaddressIdx) {
@@ -799,6 +809,10 @@ class MoneroWalletRpc extends MoneroWallet {
     subaddress.setIsUsed(false);
     subaddress.setNumBlocksToUnlock(0);
     return subaddress;
+  }
+
+  async setSubaddressLabel(accountIdx, subaddressIdx, label) {
+    await this.rpc.sendJsonRequest("label_address", {index: {major: accountIdx, minor: subaddressIdx}, label: label});
   }
   
   async getTxs(query, missingTxHashes) {
@@ -1482,6 +1496,7 @@ class MoneroWalletRpc extends MoneroWallet {
   
   async prepareMultisig() {
     let resp = await this.rpc.sendJsonRequest("prepare_multisig", {enable_multisig_experimental: true});
+    this.addressCache = {};
     let result = resp.result;
     return result.multisig_info;
   }
@@ -1492,11 +1507,13 @@ class MoneroWalletRpc extends MoneroWallet {
       threshold: threshold,
       password: password
     });
+    this.addressCache = {};
     return resp.result.multisig_info;
   }
   
   async exchangeMultisigKeys(multisigHexes, password) {
     let resp = await this.rpc.sendJsonRequest("exchange_multisig_keys", {multisig_info: multisigHexes, password: password});
+    this.addressCache = {};
     let msResult = new MoneroMultisigInitResult();
     msResult.setAddress(resp.result.address);
     msResult.setMultisigHex(resp.result.multisig_info);
@@ -1620,9 +1637,15 @@ class MoneroWalletRpc extends MoneroWallet {
     // build params for get_transfers rpc call
     let txQuery = query.getTxQuery();
     let canBeConfirmed = txQuery.isConfirmed() !== false && txQuery.inTxPool() !== true && txQuery.isFailed() !== true && txQuery.isRelayed() !== false;
-    let canBeInTxPool = txQuery.isConfirmed() !== true && txQuery.inTxPool() !== false && txQuery.isFailed() !== true && txQuery.isRelayed() !== false && txQuery.getHeight() === undefined && txQuery.getMaxHeight() === undefined && txQuery.isLocked() !== false;
+    let canBeInTxPool = txQuery.isConfirmed() !== true && txQuery.inTxPool() !== false && txQuery.isFailed() !== true && txQuery.getHeight() === undefined && txQuery.getMaxHeight() === undefined && txQuery.isLocked() !== false;
     let canBeIncoming = query.isIncoming() !== false && query.isOutgoing() !== true && query.hasDestinations() !== true;
     let canBeOutgoing = query.isOutgoing() !== false && query.isIncoming() !== true;
+
+    // check if fetching pool txs contradicted by configuration
+    if (txQuery.inTxPool() === true && !canBeInTxPool) {
+      throw new MoneroError("Cannot fetch pool transactions because it contradicts configuration");
+    }
+
     let params = {};
     params.in = canBeIncoming && canBeConfirmed;
     params.out = canBeOutgoing && canBeConfirmed;
@@ -2429,14 +2452,17 @@ class WalletPoller {
   
   async poll() {
     
-    // skip if next poll is already queued
-    if (this._numPolling > 1) return;
-    
     // synchronize polls
     let that = this;
     return this._threadPool.submit(async function() {
       try {
+        
+        // skip if next poll is already queued
+        if (that._numPolling > 1) return;
         that._numPolling++;
+        
+        // skip if wallet is closed
+        if (await that._wallet.isClosed()) return;
         
         // take initial snapshot
         if (that._prevHeight === undefined) {
@@ -2493,7 +2519,6 @@ class WalletPoller {
       } catch (err) {
         that._numPolling--;
         console.error("Failed to background poll " + await that._wallet.getPath());
-        console.error(err);
       }
     });
   }

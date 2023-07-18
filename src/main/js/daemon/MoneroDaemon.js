@@ -239,7 +239,7 @@ class MoneroDaemon {
    * 
    * @param {string} txHash - hash of the transaction to get
    * @param {boolean} prune - specifies if the returned tx should be pruned (defaults to false)
-   * @return {MoneroTx} transaction with the given hash
+   * @return {MoneroTx} transaction with the given hash or undefined if not found
    */
   async getTx(txHash, prune = false) {
     return (await this.getTxs([txHash], prune))[0];
@@ -250,7 +250,7 @@ class MoneroDaemon {
    * 
    * @param {string[]} txHashes - hashes of transactions to get
    * @param {boolean} prune - specifies if the returned txs should be pruned (defaults to false)
-   * @return {MoneroTx[]} transactions with the given hashes
+   * @return {MoneroTx[]} found transactions with the given hashes
    */
   async getTxs(txHashes, prune = false) {
     throw new MoneroError("Subclass must implement");
@@ -290,10 +290,10 @@ class MoneroDaemon {
   }
   
   /**
-   * Get the fee estimate per kB.
+   * Get mining fee estimates per kB.
    * 
-   * @param {int} graceBlocks TODO
-   * @return {BigInteger} fee estimate per kB.
+   * @param {number} graceBlocks TODO
+   * @return {MoneroFeeEstimate} mining fee estimates per kB
    */
   async getFeeEstimate(graceBlocks) {
     throw new MoneroError("Subclass must implement");
@@ -635,6 +635,16 @@ class MoneroDaemon {
    */
   async submitBlock(blockBlob) {
     await this.submitBlocks([blockBlob]);
+  }
+
+  /**
+   * Prune the blockchain.
+   * 
+   * @param {boolean} check specifies to check the pruning (default false)
+   * @return {MoneroPruneResult} the prune result
+   */
+  async pruneBlockchain(check) {
+    throw new MoneroError("Subclass must implement");
   }
   
   /**

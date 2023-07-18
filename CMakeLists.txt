@@ -66,6 +66,13 @@ include_directories("${MONERO_PROJECT}/build/release/translations")
 include_directories("${MONERO_PROJECT}/build/release/generated_include")
 
 #############
+# Unbound
+#############
+
+#include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../unbound-1.17.0/libunbound")
+include_directories("external/libunbound")
+
+#############
 # OpenSSL
 #############
 
@@ -138,12 +145,6 @@ set_target_properties(
     #${BOOST}/lib/libboost_atomic.a
 #)
 
-##############
-# Libunbound
-##############
-
-include_directories("external/libunbound")
-
 
 ################################
 # Keys-only wallet source files
@@ -201,6 +202,7 @@ set(
     ${MONERO_PROJECT_SRC}/common/base58.cpp
     ${MONERO_PROJECT_SRC}/device/device.cpp
     ${MONERO_PROJECT_SRC}/device/device_default.cpp
+    ${MONERO_PROJECT_SRC}/hardforks/hardforks.cpp
     ${MONERO_PROJECT_SRC}/multisig/multisig.cpp
     ${MONERO_PROJECT_SRC}/multisig/multisig_account.cpp
     ${MONERO_PROJECT_SRC}/multisig/multisig_account_kex_impl.cpp
@@ -277,7 +279,7 @@ EMCC_LINKER_FLAGS_BASE
 # unsure if the -I...boost..include is necessary here due to include above
 # TODO? does EXPORT_NAME need to be the same for both targets? (or should it be set per-target with …_WASM, …_ASMJS?)
 
-"-Wall -Werror -Wl,--allow-undefined -std=c++11 -Oz \
+"-Wall -Werror -Wl,--allow-undefined -std=c++14 -Oz \
 --bind -s MODULARIZE=1 \
 -s 'EXPORT_NAME=\"monero_javascript\"' \
 -s ERROR_ON_UNDEFINED_SYMBOLS=0 \

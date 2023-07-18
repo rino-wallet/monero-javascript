@@ -22,12 +22,34 @@ RUN sed --help
 
 RUN tar --version && gzip --version
 
+RUN wget https://github.com/libexpat/libexpat/releases/download/R_2_4_8/expat-2.4.8.tar.bz2 && \
+    tar -xf expat-2.4.8.tar.bz2 && \
+    rm expat-2.4.8.tar.bz2 && \
+    cd expat-2.4.8 && \
+    ./configure --enable-static --disable-shared && \
+    make > /dev/nul && \
+    make install > /dev/null
+
+RUN cd /home && \
+    wget https://www.nlnetlabs.nl/downloads/unbound/unbound-1.17.0.tar.gz && \
+    tar xzf unbound-1.17.0.tar.gz && \
+    apt update && \
+    apt-get install -y bison && \
+    apt-get install -y flex && \
+    cd unbound-1.17.0 && \
+    ./configure --with-libexpat=/usr --with-ssl=/usr && \
+    make > /dev/nul && \
+    make install > /dev/null && \
+    cd ../
+
 RUN git clone --recursive https://github.com/emscripten-core/emsdk.git > /dev/null && \
     cd /home/emsdk && \
     ./emsdk install 3.1.0 > /dev/null && \
     ./emsdk activate 3.1.0 > /dev/null
 
 COPY . ./monero-javascript
+
+VOLUME /home/monero-javascript
 
 RUN cd /home/monero-javascript && \
     ./bin/update_submodules.sh > /dev/null && \

@@ -19,12 +19,12 @@ class MoneroUtils {
    * @return {string} the version of this monero-javascript library
    */
   static getVersion() {
-    return "0.7.2";
+    return "0.7.10";
   }
-  
+
   /**
    * Enable or disable proxying these utilities to a worker thread.
-   * 
+   *
    * @param {boolean} proxyToWorker - specifies if utilities should be proxied to a worker
    */
   static setProxyToWorker(proxyToWorker) {
@@ -43,10 +43,10 @@ class MoneroUtils {
     let words = mnemonic.split(" ");
     if (words.length !== MoneroUtils.NUM_MNEMONIC_WORDS) throw new MoneroError("Mnemonic phrase is " + words.length + " words but must be " + MoneroUtils.NUM_MNEMONIC_WORDS);
   }
-  
+
   /**
    * Indicates if a private view key is valid.
-   * 
+   *
    * @param {string} privateViewKey is the private view key to validate
    * @return {Promise<bool>} true if the private view key is valid, false otherwise
    */
@@ -58,10 +58,10 @@ class MoneroUtils {
       return false;
     }
   }
-  
+
   /**
    * Indicates if a public view key is valid.
-   * 
+   *
    * @param {string} publicViewKey is the public view key to validate
    * @return {Promise<bool>} true if the public view key is valid, false otherwise
    */
@@ -73,10 +73,10 @@ class MoneroUtils {
       return false;
     }
   }
-  
+
   /**
    * Indicates if a private spend key is valid.
-   * 
+   *
    * @param {string} privateSpendKey is the private spend key to validate
    * @return {Promise<bool>} true if the private spend key is valid, false otherwise
    */
@@ -88,10 +88,10 @@ class MoneroUtils {
       return false;
     }
   }
-  
+
   /**
    * Indicates if a public spend key is valid.
-   * 
+   *
    * @param {string} publicSpendKey is the public spend key to validate
    * @return {Promise<bool>} true if the public spend key is valid, false otherwise
    */
@@ -112,7 +112,7 @@ class MoneroUtils {
   static async validatePrivateViewKey(privateViewKey) {
     if (!MoneroUtils._isHex64(privateViewKey)) throw new MoneroError("private view key expected to be 64 hex characters");
   }
-  
+
   /**
    * Validate the given public view key, throw an error if invalid.
    *
@@ -139,10 +139,10 @@ class MoneroUtils {
   static async validatePublicSpendKey(publicSpendKey) {
     if (!MoneroUtils._isHex64(publicSpendKey)) throw new MoneroError("public spend key expected to be 64 hex characters");
   }
-  
+
   /**
    * Get an integrated address.
-   * 
+   *
    * @param {MoneroNetworkType} networkType - network type of the integrated address
    * @param {string} standardAddress - address to derive the integrated address from
    * @param {string} paymentId - optionally specifies the integrated address's payment id (defaults to random payment id)
@@ -150,16 +150,16 @@ class MoneroUtils {
    */
   static async getIntegratedAddress(networkType, standardAddress, paymentId) {
     if (MoneroUtils.PROXY_TO_WORKER) return new MoneroIntegratedAddress(await LibraryUtils.invokeWorker(undefined, "moneroUtilsGetIntegratedAddress", Array.from(arguments)));
-  
+
     // validate inputs
     MoneroNetworkType.validate(networkType);
     assert(typeof standardAddress === "string", "Address is not string");
     assert(standardAddress.length > 0, "Address is empty");
     assert(GenUtils.isBase58(standardAddress), "Address is not base 58");
-    
+
     // load keys module by default
     if (LibraryUtils.getWasmModule() === undefined) await LibraryUtils.loadKeysModule();
-    
+
     // get integrated address in queue
     return LibraryUtils.getWasmModule().queueTask(async function() {
       let integratedAddressJson = LibraryUtils.getWasmModule().get_integrated_address_util(networkType, standardAddress, paymentId ? paymentId : "");
@@ -201,7 +201,7 @@ class MoneroUtils {
     
     // load keys module by default
     if (LibraryUtils.getWasmModule() === undefined) await LibraryUtils.loadKeysModule();
-    
+
     // validate address in queue
     return LibraryUtils.getWasmModule().queueTask(async function() {
       let errMsg = LibraryUtils.getWasmModule().validate_address(address, networkType);
@@ -308,24 +308,24 @@ class MoneroUtils {
     
     // use wasm in queue
     return LibraryUtils.getWasmModule().queueTask(async function() {
-      
+
       // serialize json to binary which is stored in c++ heap
       let binMemInfoStr = LibraryUtils.getWasmModule().malloc_binary_from_json(JSON.stringify(json));
-      
+
       // sanitize binary memory address info
       let binMemInfo = JSON.parse(binMemInfoStr);
       binMemInfo.ptr = parseInt(binMemInfo.ptr);
       binMemInfo.length = parseInt(binMemInfo.length);
-      
+
       // read binary data from heap to Uint8Array
       let view = new Uint8Array(binMemInfo.length);
       for (let i = 0; i < binMemInfo.length; i++) {
         view[i] = LibraryUtils.getWasmModule().HEAPU8[binMemInfo.ptr / Uint8Array.BYTES_PER_ELEMENT + i];
       }
-      
+
       // free binary on heap
       LibraryUtils.getWasmModule()._free(binMemInfo.ptr);
-      
+
       // return json from binary data
       return view;
     });
@@ -345,24 +345,24 @@ class MoneroUtils {
     
     // use wasm in queue
     return LibraryUtils.getWasmModule().queueTask(async function() {
-      
+
       // allocate space in c++ heap for binary
       let ptr = LibraryUtils.getWasmModule()._malloc(uint8arr.length * uint8arr.BYTES_PER_ELEMENT);
       let heap = new Uint8Array(LibraryUtils.getWasmModule().HEAPU8.buffer, ptr, uint8arr.length * uint8arr.BYTES_PER_ELEMENT);
       if (ptr !== heap.byteOffset) throw new MoneroError("Memory ptr !== heap.byteOffset"); // should be equal
-      
+
       // write binary to heap
       heap.set(new Uint8Array(uint8arr.buffer));
-      
+
       // create object with binary memory address info
       let binMemInfo = { ptr: ptr, length: uint8arr.length };
-      
+
       // convert binary to json str
       const ret_string = LibraryUtils.getWasmModule().binary_to_json(JSON.stringify(binMemInfo));
-      
+
       // free binary on heap
       LibraryUtils.getWasmModule()._free(ptr);
-      
+
       // parse and return json
       return JSON.parse(ret_string);
     });
@@ -382,24 +382,24 @@ class MoneroUtils {
     
     // use wasm in queue
     return LibraryUtils.getWasmModule().queueTask(async function() {
-      
+
       // allocate space in c++ heap for binary
       let ptr = LibraryUtils.getWasmModule()._malloc(uint8arr.length * uint8arr.BYTES_PER_ELEMENT);
       let heap = new Uint8Array(LibraryUtils.getWasmModule().HEAPU8.buffer, ptr, uint8arr.length * uint8arr.BYTES_PER_ELEMENT);
       if (ptr !== heap.byteOffset) throw new MoneroError("Memory ptr !== heap.byteOffset"); // should be equal
-      
+
       // write binary to heap
       heap.set(new Uint8Array(uint8arr.buffer));
-      
+
       // create object with binary memory address info
       let binMemInfo = { ptr: ptr, length: uint8arr.length  }
 
       // convert binary to json str
       const json_str = LibraryUtils.getWasmModule().binary_blocks_to_json(JSON.stringify(binMemInfo));
-      
+
       // free memory
       LibraryUtils.getWasmModule()._free(ptr);
-      
+
       // parse result to json
       let json = JSON.parse(json_str);                                          // parsing json gives arrays of block and tx strings
       json.blocks = json.blocks.map(blockStr => JSON.parse(blockStr));          // replace block strings with parsed blocks
@@ -442,22 +442,22 @@ class MoneroUtils {
   /**
    * Extracts error message from WASM/C++ exception pointer. See this for context:
    * https://emscripten.org/docs/porting/Debugging.html#handling-c-exceptions-from-javascript
-   * 
+   *
    * @param {number} errAddr memory address where the C++ error is stored
    * @return {string} the message contained within the C++ error
    */
   static extractExceptionMessage(errAddr) {
-    
+
     // wasm module must be preloaded
     if (LibraryUtils.getWasmModule() === undefined) {
       throw new MoneroError(
         "WASM module is not loaded; call 'await LibraryUtils.loadKeysModule()' to load"
       );
     }
-    
+
     return LibraryUtils.getWasmModule().get_exception_message(errAddr)
-  } 
-  
+  }
+
   static _isHex64(str) {
     return typeof str === "string" && str.length === 64 && GenUtils.isHex(str);
   }

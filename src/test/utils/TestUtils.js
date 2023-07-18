@@ -37,7 +37,7 @@ class TestUtils {
   }
   
   /**
-   * Get a singleton instance of a monero-daemon-rpc client.
+   * Get a singleton instance of a monerod client.
    */
   static getDaemonRpcConnection() {
     return new MoneroRpcConnection(TestUtils.DAEMON_RPC_CONFIG);
@@ -89,9 +89,10 @@ class TestUtils {
   /**
    * Create a monero-wallet-rpc process bound to the next available port.
    *
+   * @param {boolean} offline - wallet is started in offline mode 
    * @return {Promise<MoneroWalletRpc>} - client connected to an internal monero-wallet-rpc instance
    */
-  static async startWalletRpcProcess() {
+  static async startWalletRpcProcess(offline) {
     
     // get next available offset of ports to bind to
     let portOffset = 1;
@@ -109,12 +110,13 @@ class TestUtils {
       let cmd = [
           TestUtils.WALLET_RPC_LOCAL_PATH,
           "--" + MoneroNetworkType.toString(TestUtils.NETWORK_TYPE),
-          "--daemon-address", TestUtils.DAEMON_RPC_CONFIG.uri,
           "--rpc-bind-port", "" + (TestUtils.WALLET_RPC_PORT_START + portOffset),
           "--rpc-login", TestUtils.WALLET_RPC_CONFIG.username + ":" + TestUtils.WALLET_RPC_CONFIG.password,
           "--wallet-dir", TestUtils.WALLET_RPC_LOCAL_WALLET_DIR,
           "--rpc-access-control-origins", TestUtils.WALLET_RPC_ACCESS_CONTROL_ORIGINS
       ];
+      if (offline) cmd.push("--offline");
+      else cmd.push("--daemon-address", TestUtils.DAEMON_RPC_CONFIG.uri);
       if (TestUtils.DAEMON_RPC_CONFIG.username) cmd.push("--daemon-login", TestUtils.DAEMON_RPC_CONFIG.username + ":" + TestUtils.DAEMON_RPC_CONFIG.password);
       
       // TODO: include zmq params when supported and enabled
@@ -171,7 +173,7 @@ class TestUtils {
         
         // create wallet with connection
         TestUtils.walletFull = await monerojs.createWalletFull({path: TestUtils.WALLET_FULL_PATH, password: TestUtils.WALLET_PASSWORD, networkType: TestUtils.NETWORK_TYPE, mnemonic: TestUtils.MNEMONIC, server: TestUtils.getDaemonRpcConnection(), restoreHeight: TestUtils.FIRST_RECEIVE_HEIGHT, proxyToWorker: TestUtils.PROXY_TO_WORKER, fs: fs});
-        assert.equal(await TestUtils.walletFull.getSyncHeight(), TestUtils.FIRST_RECEIVE_HEIGHT);
+        assert.equal(await TestUtils.walletFull.getRestoreHeight(), TestUtils.FIRST_RECEIVE_HEIGHT);
         await TestUtils.walletFull.sync(new WalletSyncPrinter());
         await TestUtils.walletFull.save();
         await TestUtils.walletFull.startSyncing(TestUtils.SYNC_PERIOD_IN_MS);
@@ -203,6 +205,42 @@ class TestUtils {
       TestUtils.walletKeys = await monerojs.createWalletKeys({networkType: TestUtils.NETWORK_TYPE, mnemonic: TestUtils.MNEMONIC});
     }
     return TestUtils.walletKeys;
+  }
+  
+  /**
+   * Creates a new wallet considered to be "ground truth".
+   * 
+   * @param networkType - ground truth wallet's network type
+   * @param mnemonic - ground truth wallet's mnemonic
+   * @param startHeight - height to start syncing from
+   * @param restoreHeight - ground truth wallet's restore height
+   * @return {MoneroWalletFull} the created wallet
+   */
+  static async createWalletGroundTruth(networkType, mnemonic, startHeight, restoreHeight) {
+
+    // create directory for test wallets if it doesn't exist
+    let fs = TestUtils.getDefaultFs();
+    if (!fs.existsSync(TestUtils.TEST_WALLETS_DIR)) {
+      if (!fs.existsSync(process.cwd())) fs.mkdirSync(process.cwd(), { recursive: true });  // create current process directory for relative paths which does not exist in memory fs
+      fs.mkdirSync(TestUtils.TEST_WALLETS_DIR);
+    }
+
+    // create ground truth wallet
+    let daemonConnection = new MoneroRpcConnection(TestUtils.DAEMON_RPC_CONFIG);
+    let path = TestUtils.TEST_WALLETS_DIR + "/gt_wallet_" + new Date().getTime();
+    let gtWallet = await monerojs.createWalletFull({
+      path: path,
+      password: TestUtils.WALLET_PASSWORD,
+      networkType: networkType,
+      mnemonic: mnemonic,
+      server: daemonConnection,
+      restoreHeight: restoreHeight,
+      fs: fs
+    });
+    assert.equal(await gtWallet.getRestoreHeight(), restoreHeight ? restoreHeight : 0);
+    await gtWallet.sync(startHeight, new WalletSyncPrinter());
+    await gtWallet.startSyncing(TestUtils.SYNC_PERIOD_IN_MS);
+    return gtWallet;
   }
   
   static testUnsignedBigInteger(num, nonZero) {
@@ -267,8 +305,8 @@ TestUtils.WALLET_RPC_CONFIG = {
 TestUtils.DAEMON_LOCAL_PATH = TestUtils.MONERO_BINS_DIR + "/monerod";
 TestUtils.DAEMON_RPC_CONFIG = {
   uri: "localhost:28081",
-  username: "",
-  password: "",
+  username: undefined,
+  password: undefined,
   rejectUnauthorized: true // reject self-signed certificates if true
 };
 
@@ -276,6 +314,7 @@ const WalletTxTracker = require("./WalletTxTracker");
 TestUtils.WALLET_TX_TRACKER = new WalletTxTracker(); // used to track wallet txs for tests
 TestUtils.PROXY_TO_WORKER = true;
 TestUtils.SYNC_PERIOD_IN_MS = 5000; // period between wallet syncs in milliseconds
+TestUtils.OFFLINE_SERVER_URI = "offline_server_uri"; // dummy server uri to remain offline because wallet2 connects to default if not given
 
 // monero-wallet-rpc process management
 TestUtils.WALLET_RPC_PORT_START = 28084;

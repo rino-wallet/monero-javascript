@@ -1,6 +1,7 @@
 const fs = require('fs');
 const monerojs = require("@rino-wallet/monero-javascript");
 
+const moneroDaemonUrl = 'stagenet.community.rino.io:38081';
 const moneroNetwork = monerojs.MoneroNetworkType.STAGENET;
 const tmpFilesFolder = './tmpWASMErrorTest';
 const defaultWalletsPassword = 'password'
@@ -35,7 +36,6 @@ test("Fetch errors from WASM", async () => {
     // https://emscripten.org/docs/porting/Debugging.html#handling-c-exceptions-from-javascript
     console.log(`err: ${err}`);
     expect((typeof err) == "number").toBeTruthy()
-
     const errMsg = monerojs.MoneroUtils.extractExceptionMessage(err);
     console.log(`errMsg: ${errMsg}`);
     expect((typeof errMsg) == "string").toBeTruthy()

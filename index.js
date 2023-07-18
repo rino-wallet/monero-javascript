@@ -18,6 +18,7 @@ module.exports.MoneroRpcConnection = require("./src/main/js/common/MoneroRpcConn
 module.exports.MoneroRpcError = require("./src/main/js/common/MoneroRpcError");
 module.exports.SslOptions = require("./src/main/js/common/SslOptions");
 module.exports.TaskLooper = require("./src/main/js/common/TaskLooper");
+module.exports.ThreadPool = require("./src/main/js/common/ThreadPool");
 
 // export daemon models
 module.exports.ConnectionType = require("./src/main/js/daemon/model/ConnectionType");
@@ -40,6 +41,7 @@ module.exports.MoneroMiningStatus = require("./src/main/js/daemon/model/MoneroMi
 module.exports.MoneroNetworkType = require("./src/main/js/daemon/model/MoneroNetworkType");
 module.exports.MoneroOutput = require("./src/main/js/daemon/model/MoneroOutput");
 module.exports.MoneroOutputHistogramEntry = require("./src/main/js/daemon/model/MoneroOutputHistogramEntry");
+module.exports.MoneroPruneResult = require("./src/main/js/daemon/model/MoneroPruneResult");
 module.exports.MoneroSubmitTxResult = require("./src/main/js/daemon/model/MoneroSubmitTxResult");
 module.exports.MoneroTx = require("./src/main/js/daemon/model/MoneroTx");
 module.exports.MoneroTxPoolStats = require("./src/main/js/daemon/model/MoneroTxPoolStats");
@@ -102,7 +104,7 @@ module.exports.getVersion = function() {
 }
 
 /**
- * <p>Create a client connected to monero-daemon-rpc.<p>
+ * <p>Create a client connected to monerod.<p>
  * 
  * <p>Examples:<p>
  * 
@@ -116,15 +118,15 @@ module.exports.getVersion = function() {
  * });
  * </code>
  * 
- * @param {string|object|MoneroRpcConnection} uriOrConfig - uri of monero-daemon-rpc or JS config object or MoneroRpcConnection
- * @param {string} uriOrConfig.uri - uri of monero-daemon-rpc
- * @param {string} uriOrConfig.username - username to authenticate with monero-daemon-rpc (optional)
- * @param {string} uriOrConfig.password - password to authenticate with monero-daemon-rpc (optional)
+ * @param {string|object|MoneroRpcConnection} uriOrConfig - uri of monerod or JS config object or MoneroRpcConnection
+ * @param {string} uriOrConfig.uri - uri of monerod
+ * @param {string} uriOrConfig.username - username to authenticate with monerod (optional)
+ * @param {string} uriOrConfig.password - password to authenticate with monerod (optional)
  * @param {boolean} uriOrConfig.rejectUnauthorized - rejects self-signed certificates if true (default true)
  * @param {number} uriOrConfig.pollInterval - poll interval to query for updates in ms (default 5000)
  * @param {boolean} uriOrConfig.proxyToWorker - run the daemon client in a web worker if true (default true)
- * @param {string} username - username to authenticate with monero-daemon-rpc (optional)
- * @param {string} password - password to authenticate with monero-daemon-rpc (optional)
+ * @param {string} username - username to authenticate with monerod (optional)
+ * @param {string} password - password to authenticate with monerod (optional)
  * @param {boolean} rejectUnauthorized - rejects self-signed certificates if true (default true)
  * @param {number} pollInterval - poll interval to query for updates in ms (default 5000)
  * @param {boolean} proxyToWorker - runs the daemon client in a web worker if true (default true)
@@ -200,6 +202,8 @@ module.exports.connectToWalletRpc = function() { return module.exports.MoneroWal
  * @param {string} config.privateSpendKey - private spend key of the wallet to create (optional)
  * @param {number} config.restoreHeight - block height to start scanning frsom (defaults to 0 unless generating random wallet)
  * @param {string} config.language - language of the wallet's mnemonic phrase (defaults to "English" or auto-detected)
+ * @param {number} config.accountLookahead -  number of accounts to scan (optional)
+ * @param {number} config.subaddressLookahead - number of subaddresses to scan per account (optional)
  * @param {string} config.serverUri - uri of the wallet's daemon (optional)
  * @param {string} config.serverUsername - username to authenticate with the daemon (optional)
  * @param {string} config.serverPassword - password to authenticate with the daemon (optional)

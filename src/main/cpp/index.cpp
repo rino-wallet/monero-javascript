@@ -19,9 +19,7 @@ EMSCRIPTEN_BINDINGS(module)
   // --------------------------- WALLET CREATION ------------------------------
 
   emscripten::function("open_wallet_full", &monero_wasm_bridge::open_wallet_full);
-  emscripten::function("create_full_wallet_random", &monero_wasm_bridge::create_full_wallet_random);
-  emscripten::function("create_full_wallet_from_mnemonic", &monero_wasm_bridge::create_full_wallet_from_mnemonic);
-  emscripten::function("create_full_wallet_from_keys", &monero_wasm_bridge::create_full_wallet_from_keys);
+  emscripten::function("create_full_wallet", &monero_wasm_bridge::create_full_wallet);
   emscripten::function("get_full_wallet_mnemonic_languages", &monero_wasm_bridge::get_full_wallet_mnemonic_languages);
 
   emscripten::function("create_keys_wallet_random", &monero_wasm_bridge::create_keys_wallet_random);
@@ -53,11 +51,12 @@ EMSCRIPTEN_BINDINGS(module)
   emscripten::function("is_daemon_synced", &monero_wasm_bridge::is_daemon_synced);
   emscripten::function("is_synced", &monero_wasm_bridge::is_synced);
   emscripten::function("get_network_type", &monero_wasm_bridge::get_network_type);
-  emscripten::function("get_sync_height", &monero_wasm_bridge::get_sync_height);
-  emscripten::function("set_sync_height", &monero_wasm_bridge::set_sync_height);
+  emscripten::function("get_restore_height", &monero_wasm_bridge::get_restore_height);
+  emscripten::function("set_restore_height", &monero_wasm_bridge::set_restore_height);
   emscripten::function("set_listener", &monero_wasm_bridge::set_listener);
   emscripten::function("sync", &monero_wasm_bridge::sync);
   emscripten::function("stop_syncing", &monero_wasm_bridge::stop_syncing);
+  emscripten::function("scan_txs", &monero_wasm_bridge::scan_txs);
   emscripten::function("rescan_spent", &monero_wasm_bridge::rescan_spent);
   emscripten::function("rescan_blockchain", &monero_wasm_bridge::rescan_blockchain);
   emscripten::function("get_balance_wallet", &monero_wasm_bridge::get_balance_wallet);
@@ -71,6 +70,7 @@ EMSCRIPTEN_BINDINGS(module)
   emscripten::function("create_account", &monero_wasm_bridge::create_account);
   emscripten::function("get_subaddresses", &monero_wasm_bridge::get_subaddresses);
   emscripten::function("create_subaddress", &monero_wasm_bridge::create_subaddress);
+  emscripten::function("set_subaddress_label", &monero_wasm_bridge::set_subaddress_label);
   emscripten::function("get_txs", &monero_wasm_bridge::get_txs);
   emscripten::function("get_transfers", &monero_wasm_bridge::get_transfers);
   emscripten::function("get_outputs", &monero_wasm_bridge::get_outputs);

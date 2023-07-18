@@ -167,7 +167,7 @@ class MoneroWalletKeys extends MoneroWallet {
     super();
     this._cppAddress = cppAddress;
     this._module = LibraryUtils.getWasmModule();
-    if (!this._module.create_full_wallet_from_mnemonic) throw new MoneroError("WASM module not loaded - create wallet instance using static utilities");  // static utilites pre-load wasm module
+    if (!this._module.create_full_wallet) throw new MoneroError("WASM module not loaded - create wallet instance using static utilities");  // static utilites pre-load wasm module
   }
   
   async addListener(listener) {
@@ -213,6 +213,8 @@ class MoneroWalletKeys extends MoneroWallet {
     return that._module.queueTask(async function() {
       that._assertNotClosed();
       let mnemonic = that._module.get_mnemonic(that._cppAddress);
+      const errorStr = "error: ";
+      if (mnemonic.indexOf(errorStr) === 0) throw new MoneroError(mnemonic.substring(errorStr.length));
       return mnemonic ? mnemonic : undefined;
     });
   }

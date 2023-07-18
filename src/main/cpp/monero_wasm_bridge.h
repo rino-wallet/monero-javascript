@@ -32,9 +32,7 @@ namespace monero_wasm_bridge
   // ------------------------- STATIC WALLET UTILS ----------------------------
 
   void open_wallet_full(const string& password, int network_type, const string& keys_data, const string& cache_data, const string& daemon_uri, const string& daemon_username, const string& daemon_password, const string& reject_unauthorized_fn_id, emscripten::val callback);
-  void create_full_wallet_random(const string& password, int network_type, const string& daemon_uri, const string& daemon_username, const string& daemon_password, const string& reject_unauthorized_fn_id, const string& language, emscripten::val callback);
-  void create_full_wallet_from_mnemonic(const string& password, int network_type, const string& mnemonic, const string& daemon_uri, const string& daemon_username, const string& daemon_password, const string& reject_unauthorized_fn_id, long restore_height, const string& seed_offset, emscripten::val callback);
-  void create_full_wallet_from_keys(const string& password, int network_type, const string& address, const string& view_key, const string& spend_key, const string& daemon_uri, const string& daemon_username, const string& daemon_password, const string& reject_unauthorized_fn_id, long restore_height, const string& language, emscripten::val callback);
+  void create_full_wallet(const string& config_json, const string& reject_unauthorized_fn_id, emscripten::val callback);
   string get_full_wallet_mnemonic_languages();
 
   void create_keys_wallet_random(int network_type, const string& language, emscripten::val callback);
@@ -66,16 +64,17 @@ namespace monero_wasm_bridge
   void is_daemon_synced(int handle, emscripten::val callback);
   void is_synced(int handle, emscripten::val callback);
   int get_network_type(int handle);
-  long get_sync_height(int handle);
-  void set_sync_height(int handle, long sync_height);
+  long get_restore_height(int handle);
+  void set_restore_height(int handle, long restore_height);
 //  long get_daemon_height(int handle);
 //  long get_daemon_max_peer_height(int handle);
   //void add_listener(int handle, monero_wallet_listener& listener);
   //void remove_listener(int handle, monero_wallet_listener& listener);
   //set<monero_wallet_listener*> get_listeners(int handle);
-  int set_listener(int wallet_handle, int old_listener_handle, emscripten::val on_sync_progress = emscripten::val::undefined(), emscripten::val on_new_block = emscripten::val::undefined(), emscripten::val on_balances_changed = emscripten::val::undefined(), emscripten::val on_output_received = emscripten::val::undefined(), emscripten::val on_output_spent = emscripten::val::undefined());
+  void set_listener(int wallet_handle, int old_listener_handle, emscripten::val callback, emscripten::val on_sync_progress = emscripten::val::undefined(), emscripten::val on_new_block = emscripten::val::undefined(), emscripten::val on_balances_changed = emscripten::val::undefined(), emscripten::val on_output_received = emscripten::val::undefined(), emscripten::val on_output_spent = emscripten::val::undefined());
   void sync(int handle, long start_height, emscripten::val callback);
   void stop_syncing(int handle);
+  void scan_txs(int handle, const string& args, emscripten::val callback);
   void rescan_spent(int handle, emscripten::val callback);
   void rescan_blockchain(int handle, emscripten::val callback);
   string get_balance_wallet(int handle);
@@ -89,6 +88,7 @@ namespace monero_wasm_bridge
   string create_account(int handle, const string& label);
   string get_subaddresses(int handle, const string& args);
   string create_subaddress(int handle, const uint32_t account_idx, const string& label);
+  void set_subaddress_label(int handle, const uint32_t account_idx, const uint32_t subaddress_idx, const string& label);
   void get_txs(int handle, const string& tx_query_json, emscripten::val callback);
   void get_transfers(int handle, const string& transfer_query_json, emscripten::val callback);
   void get_outputs(int handle, const string& output_query_json, emscripten::val callback);
@@ -140,8 +140,8 @@ namespace monero_wasm_bridge
   bool is_multisig_import_needed(int handle);
   string get_multisig_info(int handle);
   string prepare_multisig(int handle);
-  string make_multisig(int handle, const string& args);
-  string exchange_multisig_keys(int handle, const string& args);
+  void make_multisig(int handle, const string& args, emscripten::val callback);
+  void exchange_multisig_keys(int handle, const string& args, emscripten::val callback);
   string export_multisig_hex(int handle);
   void import_multisig_hex(int handle, const string& args, emscripten::val callback);
   void sign_multisig_tx_hex(int handle, const string& multisig_tx_hex, emscripten::val callback);

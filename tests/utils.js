@@ -61,7 +61,7 @@ async function createMultisigWallets(dir) {
     [madeServerMs, madeUserMs], defaultWalletsPassword,
   )
   console.log("First round exchanging multisig keys  Backup Multisig")
-  
+
   // SECOND ROUND OF EXCHANGE MULTISIG KEYS - PREVIOUSLY EQUAL TO FINALIZE MS
   const finalizedServerMs = await serverWallet.exchangeMultisigKeys(
     [firstUserMs.getMultisigHex(), firstBackupMs.getMultisigHex()], defaultWalletsPassword

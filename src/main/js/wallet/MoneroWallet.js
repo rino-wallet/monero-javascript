@@ -283,7 +283,16 @@ class MoneroWallet {
   async stopSyncing() {
     throw new MoneroError("Not supported");
   }
-  
+
+  /**
+   * Scan transactions by their hash/id.
+   *
+   * @param {string[]} txHashes - tx hashes to scan
+   */
+  async scanTxs(txHashes) {
+    throw new MoneroError("Not supported");
+  }
+
   /**
    * <p>Rescan the blockchain for spent outputs.</p>
    * 
@@ -405,7 +414,17 @@ class MoneroWallet {
   async createAccount(label) {
     throw new MoneroError("Not supported");
   }
-  
+
+  /**
+   * Set an account label.
+   *
+   * @param {number} accountIdx - index of the account to set the label for
+   * @param {string} label - the label to set
+   */
+  async setAccountLabel(accountIdx, label) {
+    await this.setSubaddressLabel(accountIdx, 0, label);
+  }
+
   /**
    * Get subaddresses in an account.
    * 
@@ -440,12 +459,24 @@ class MoneroWallet {
   async createSubaddress(accountIdx, label) {
     throw new MoneroError("Not supported");
   }
-  
+
+  /**
+   * Set a subaddress label.
+   *
+   * @param {number} accountIdx - index of the account to set the label for
+   * @param {number} subaddressIdx - index of the subaddress to set the label for
+   * @param {string} label - the label to set
+   */
+  async setSubaddressLabel(accountIdx, subaddressIdx, label) {
+    throw new MoneroError("Not supported");
+  }
+
   /**
    * Get a wallet transaction by hash.
    * 
    * @param {string} txHash - hash of a transaction to get
    * @return {MoneroTxWallet} the identified transactions
+   * @throws {MoneroError} if the transaction is not found
    */
   async getTx(txHash) {
     let txs = await this.getTxs([txHash]);
@@ -697,11 +728,11 @@ class MoneroWallet {
   async getMultisigSeed(seedPass) {
     throw new MoneroError("Not supported");
   }
-  
+
   /**
    *
    * @param {string} multisigTxHex - multisig transaction (required)
-   * 
+   *
    * Assumes there's only one transaction in multisigTxHex.
    */
   async loadMultisigTx(multisigTxHex) {
@@ -796,24 +827,24 @@ class MoneroWallet {
   
   /**
    * Describe a tx set from unsigned tx hex.
-   * 
+   *
    * @param {string} unsignedTxHex - unsigned tx hex
    * @return {MoneroTxSet} the tx set containing structured transactions
    */
   async describeUnsignedTxSet(unsignedTxHex) {
     return this.describeTxSet(new MoneroTxSet().setUnsignedTxHex(unsignedTxHex));
   }
-  
+
   /**
    * Describe a tx set from multisig tx hex.
-   * 
+   *
    * @param {string} multisigTxHex - multisig tx hex
    * @return {MoneroTxSet} the tx set containing structured transactions
    */
   async describeMultisigTxSet(multisigTxHex) {
     return this.describeTxSet(new MoneroTxSet().setMultisigTxHex(multisigTxHex));
   }
-  
+
   /**
    * Describe a tx set containing unsigned or multisig tx hex to a new tx set containing structured transactions.
    * 
@@ -1252,17 +1283,17 @@ class MoneroWallet {
   async submitMultisigTxHex(signedMultisigTxHex) {
     throw new MoneroError("Not supported");
   }
-  
+
   /**
    * Change the wallet password.
-   * 
+   *
    * @param {string} oldPassword - the wallet's old password
    * @param {string} newPassword - the wallet's new password
    */
   async changePassword(oldPassword, newPassword) {
     throw new MoneroError("Not supported");
   }
-  
+
   /**
    * Save the wallet at its current path.
    */

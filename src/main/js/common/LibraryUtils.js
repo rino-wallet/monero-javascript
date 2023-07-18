@@ -106,15 +106,7 @@ class LibraryUtils {
       });
     });
   }
-  
-  /**
-   * Private helper to initialize the wasm module with data structures to synchronize access.
-   */
-  static _initWasmModule(wasmModule) {
-    wasmModule.taskQueue = new ThreadPool(1);
-    wasmModule.queueTask = async function(asyncFn) { return wasmModule.taskQueue.submit(asyncFn); }
-  }
-  
+
   /**
    * Register a function by id which informs if unauthorized requests (e.g.
    * self-signed certificates) should be rejected.
@@ -145,7 +137,7 @@ class LibraryUtils {
    * @param {string} workerDistPath - path to load the worker
    */
   static setWorkerDistPath(workerDistPath) {
-    let path = workerDistPath ? workerDistPath : LibraryUtils.WORKER_DIST_PATH_DEFAULT;
+    let path = LibraryUtils._prefixWindowsPath(workerDistPath ? workerDistPath : LibraryUtils.WORKER_DIST_PATH_DEFAULT);
     if (path !== LibraryUtils.WORKER_DIST_PATH) delete LibraryUtils.WORKER;
     LibraryUtils.WORKER_DIST_PATH = path;
   }
@@ -160,7 +152,7 @@ class LibraryUtils {
     // one time initialization
     if (!LibraryUtils.WORKER) {
       if (GenUtils.isBrowser()) LibraryUtils.WORKER = new Worker(LibraryUtils.WORKER_DIST_PATH);
-      else { 
+      else {
        const Worker = require("web-worker"); // import web worker if nodejs
        LibraryUtils.WORKER = new Worker(LibraryUtils.WORKER_DIST_PATH);
       }
@@ -195,31 +187,68 @@ class LibraryUtils {
   }
   
   /**
+   * Terminate monero-javascript's singleton worker.
+   */
+  static async terminateWorker() {
+    if (LibraryUtils.WORKER) {
+      LibraryUtils.WORKER.terminate();
+      delete LibraryUtils.WORKER;
+      LibraryUtils.WORKER = undefined;
+    }
+  }
+
+  /**
    * Invoke a worker function and get the result with error handling.
    * 
    * @param {objectId} identifies the worker object to invoke
    * @param {string} fnName is the name of the function to invoke
    * @param {Object[]} args are function arguments to invoke with
-   * @return {Promise} resolves with response payload from the worker or an error
+   * @return {any} resolves with response payload from the worker or an error
    */
   static async invokeWorker(objectId, fnName, args) {
     assert(fnName.length >= 2);
     let worker = await LibraryUtils.getWorker();
     if (!LibraryUtils.WORKER_OBJECTS[objectId]) LibraryUtils.WORKER_OBJECTS[objectId] = {callbacks: {}};
-    return new Promise(function(resolve, reject) {
+    return await new Promise(function(resolve, reject) {
       let callbackId = GenUtils.getUUID();
       LibraryUtils.WORKER_OBJECTS[objectId].callbacks[callbackId] = function(resp) {  // TODO: this defines function once per callback
-        resp ? (resp.error ? reject(new MoneroError(resp.error)) : resolve(resp.result)) : resolve();
+        resp ? (resp.error ? reject(LibraryUtils.deserializeError(resp.error)) : resolve(resp.result)) : resolve();
+        delete LibraryUtils.WORKER_OBJECTS[objectId].callbacks[callbackId];
       };
       worker.postMessage([objectId, fnName, callbackId].concat(args === undefined ? [] : GenUtils.listify(args)));
     });
+  }
+
+  static serializeError(err) {
+    const serializedErr = { name: err.name, message: err.message, stack: err.stack };
+    if (err instanceof MoneroError) serializedErr.type = "MoneroError";
+    return serializedErr;
+  }
+
+  static deserializeError(serializedErr) {
+    const err = serializedErr.type === "MoneroError" ? new MoneroError(serializedErr.message) : new Error(serializedErr.message);
+    err.name = serializedErr.name;
+    err.stack = serializedErr.stack;
+    return err;
+  }
+
+  // ------------------------------ PRIVATE HELPERS ---------------------------
+
+  static _initWasmModule(wasmModule) {
+    wasmModule.taskQueue = new ThreadPool(1);
+    wasmModule.queueTask = async function(asyncFn) { return wasmModule.taskQueue.submit(asyncFn); }
+  }
+
+  static _prefixWindowsPath(path) {
+    if (path.indexOf("C:") == 0 && path.indexOf("file://") == -1) path = "file://" + path; // prepend C: paths with file://
+    return path;
   }
 }
 
 LibraryUtils.LOG_LEVEL = 0;
 LibraryUtils.WORKER_DIST_PATH_DEFAULT = GenUtils.isBrowser() ? "/monero_web_worker.js" : function() {
     const path = require("path");
-    return path.join(__dirname, "./MoneroWebWorker.js");
+    return LibraryUtils._prefixWindowsPath(path.join(__dirname, "./MoneroWebWorker.js"));
 }();
 LibraryUtils.WORKER_DIST_PATH = LibraryUtils.WORKER_DIST_PATH_DEFAULT;
 

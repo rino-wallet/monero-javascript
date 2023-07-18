@@ -64,7 +64,7 @@ test('reconstructValidateTx flow succeeds', async() => {
   // * this multisig wallet was pre-funded, so we know it has outputs (see import outputs step)
   const feMultisigInfo = await fe.exportMultisigHex();
   const outputsSignedByBE = await be.importMultisigHex([feMultisigInfo]);
-  expect(outputsSignedByBE).toBeGreaterThan(0)
+  expect(outputsSignedByBE).toBeGreaterThan(0);
 
   // We cant send  all the funds back to the faucet, because we need to account for fees
   const correctTxConfig = new monerojs.MoneroTxConfig({
@@ -76,7 +76,7 @@ test('reconstructValidateTx flow succeeds', async() => {
 
   const balance = await be.getBalance();
   console.log(`Balance before creating the first Tx: ${balance}`);
-  
+
   const unlockedBalance = await be.getUnlockedBalance();
   console.log(`Unlocked balance before creating the first Tx: ${unlockedBalance}`);
 
@@ -96,6 +96,8 @@ test('reconstructValidateTx flow succeeds', async() => {
   // expect(await fe.getBalance(0, 0)).toEqual(await be.getBalance(0, 0));
 
   const loadedConfig = await fe.loadMultisigTx(unsignedTxsHex);
+  console.log(loadedConfig.getFee());
+  console.log(typeof loadedConfig.getFee());
   expect(loadedConfig.getFee()).toBeGreaterThan(0);
 
   // The `fe` reconstructs the unsigned tx from its hex, and puts the first partial signature. Validating

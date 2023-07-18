@@ -127,6 +127,7 @@ test('reconstructValidateTx flow fails due to mismatch between desired and actua
     try {
       await fe.reconstructValidateTx(unsignedTxsHex, badTxConfig);
     } catch (err) {
+      console.log(err.toString());
       expect(err.toString().includes('Tx does not match the expected destinations')).toBeTruthy()
       failed = true;
     }

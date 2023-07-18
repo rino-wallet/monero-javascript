@@ -12,6 +12,7 @@ const MoneroRpcConnection = require("./MoneroRpcConnection");
 const MoneroTxConfig = require("../wallet/model/MoneroTxConfig");
 const MoneroTxSet = require("../wallet/model/MoneroTxSet");
 const MoneroUtils = require("../common/MoneroUtils");
+const MoneroWalletConfig = require("../wallet/model/MoneroWalletConfig");
 const MoneroWalletListener = require("../wallet/model/MoneroWalletListener");
 const MoneroWalletFull = require("../wallet/MoneroWalletFull");
 
@@ -42,7 +43,8 @@ onmessage = async function(e) {
   try {
     postMessage([objectId, callbackId, {result: await self[fnName].apply(null, e.data)}]);
   } catch (e) {
-    postMessage([objectId, callbackId, {error: e.message}]);
+    if (!(e instanceof Error)) e = new Error(e);
+    postMessage([objectId, callbackId, {error: LibraryUtils.serializeError(e)}]);
   }
 }
 
@@ -60,7 +62,7 @@ self.initOneTime = async function() {
 
 self.httpRequest = async function(objectId, opts) {
   try {
-    return await HttpClient.request(Object.assign(opts, {proxyToWorker: false}));  
+    return await HttpClient.request(Object.assign(opts, {proxyToWorker: false}));
   } catch (err) {
     throw err.statusCode ? new Error(JSON.stringify({statusCode: err.statusCode, statusMessage: err.message})) : err;
   }
@@ -238,7 +240,7 @@ self.daemonGetMinerTxSum = async function(daemonId, height, numBlocks) {
 }
 
 self.daemonGetFeeEstimate = async function(daemonId, graceBlocks) {
-  return (await self.WORKER_OBJECTS[daemonId].getFeeEstimate(graceBlocks)).toString();
+  return (await self.WORKER_OBJECTS[daemonId].getFeeEstimate(graceBlocks)).toJson();
 }
 
 self.daemonSubmitTxHex = async function(daemonId, txHex, doNotRelay) {
@@ -384,6 +386,10 @@ self.daemonGetMiningStatus = async function(daemonId) {
   return (await self.WORKER_OBJECTS[daemonId].getMiningStatus()).toJson();
 }
 
+self.daemonPruneBlockchain = async function(daemonId, check) {
+  return (await self.WORKER_OBJECTS[daemonId].pruneBlockchain(check)).toJson();
+}
+
 //
 //async submitBlocks(blockBlobs) {
 //  throw new MoneroError("Not implemented");
@@ -413,21 +419,12 @@ self.openWalletData = async function(walletId, path, password, networkType, keys
   self.WORKER_OBJECTS[walletId]._setBrowserMainPath(path);
 }
 
-self._createWalletRandom = async function(walletId, path, password, networkType, daemonUriOrConfig, language) {
-  let daemonConnection = daemonUriOrConfig ? new MoneroRpcConnection(daemonUriOrConfig) : undefined;
-  self.WORKER_OBJECTS[walletId] = await MoneroWalletFull._createWalletRandom("", password, networkType, daemonConnection, language, false);
-  self.WORKER_OBJECTS[walletId]._setBrowserMainPath(path);
-}
-
-self._createWalletFromMnemonic = async function(walletId, path, password, networkType, mnemonic, daemonUriOrConfig, restoreHeight, seedOffset) {
-  let daemonConnection = daemonUriOrConfig ? new MoneroRpcConnection(daemonUriOrConfig) : undefined;
-  self.WORKER_OBJECTS[walletId] = await MoneroWalletFull._createWalletFromMnemonic("", password, networkType, mnemonic, daemonConnection, restoreHeight, seedOffset, false);
-  self.WORKER_OBJECTS[walletId]._setBrowserMainPath(path);
-}
-
-self._createWalletFromKeys = async function(walletId, path, password, networkType, address, viewKey, spendKey, daemonUriOrConfig, restoreHeight, language) {
-  let daemonConnection = daemonUriOrConfig ? new MoneroRpcConnection(daemonUriOrConfig) : undefined;
-  self.WORKER_OBJECTS[walletId] = await MoneroWalletFull._createWalletFromKeys("", password, networkType, address, viewKey, spendKey, daemonConnection, restoreHeight, language, false);
+self._createWallet = async function(walletId, configJson) {
+  let config = new MoneroWalletConfig(configJson);
+  let path = config.getPath();
+  config.setPath("");
+  config.setProxyToWorker(false);
+  self.WORKER_OBJECTS[walletId] = await MoneroWalletFull.createWallet(config);
   self.WORKER_OBJECTS[walletId]._setBrowserMainPath(path);
 }
 
@@ -480,6 +477,10 @@ self.getAddressIndex = async function(walletId, address) {
   return (await self.WORKER_OBJECTS[walletId].getAddressIndex(address)).toJson();
 }
 
+self.setSubaddressLabel = async function(walletId, accountIdx, subaddressIdx, label) {
+  await self.WORKER_OBJECTS[walletId].setSubaddressLabel(accountIdx, subaddressIdx, label);
+}
+
 self.getIntegratedAddress = async function(walletId, standardAddress, paymentId) {
   return (await self.WORKER_OBJECTS[walletId].getIntegratedAddress(standardAddress, paymentId)).toJson();
 }
@@ -501,12 +502,12 @@ self.isConnectedToDaemon = async function(walletId) {
   return self.WORKER_OBJECTS[walletId].isConnectedToDaemon();
 }
 
-self.getSyncHeight = async function(walletId) {
-  return self.WORKER_OBJECTS[walletId].getSyncHeight();
+self.getRestoreHeight = async function(walletId) {
+  return self.WORKER_OBJECTS[walletId].getRestoreHeight();
 }
 
-self.setSyncHeight = async function(walletId, syncHeight) {
-  return self.WORKER_OBJECTS[walletId].setSyncHeight(syncHeight);
+self.setRestoreHeight = async function(walletId, restoreHeight) {
+  return self.WORKER_OBJECTS[walletId].setRestoreHeight(restoreHeight);
 }
 
 self.getDaemonHeight = async function(walletId) {
@@ -606,6 +607,10 @@ self.startSyncing = async function(walletId, syncPeriodInMs) {
 
 self.stopSyncing = async function(walletId) {
   return self.WORKER_OBJECTS[walletId].stopSyncing();
+}
+
+self.scanTxs = async function(walletId, txHashes) {
+  return self.WORKER_OBJECTS[walletId].scanTxs(txHashes);
 }
 
 self.rescanSpent = async function(walletId) {

@@ -485,8 +485,11 @@ class TestMoneroDaemonRpc {
       
       if (testConfig.testNonRelays)
       it("Can get a fee estimate", async function() {
-        let fee = await that.daemon.getFeeEstimate();
-        TestUtils.testUnsignedBigInteger(fee, true);
+        let feeEstimate = await that.daemon.getFeeEstimate();
+        TestUtils.testUnsignedBigInteger(feeEstimate.getFee(), true);
+        assert(feeEstimate.getFees().length === 4); // slow, normal, fast, fastest
+        for (let i = 0; i < 4; i++) TestUtils.testUnsignedBigInteger(feeEstimate.getFees()[i], true);
+        TestUtils.testUnsignedBigInteger(feeEstimate.getQuantizationMask(), true);
       });
       
       if (testConfig.testNonRelays)
@@ -527,27 +530,32 @@ class TestMoneroDaemonRpc {
       });
       
       if (testConfig.testNonRelays)
-      it("Can get transaction pool statistics (binary)", async function() {
+      it("Can get transaction pool statistics", async function() {
         await TestUtils.WALLET_TX_TRACKER.waitForWalletTxsToClearPool(that.wallet);
-        
-        // submit txs to the pool but don't relay (multiple txs result in binary `histo` field)
-        for (let i = 0; i < 2; i++) {
-          
-          // submit tx hex
-          let tx = await getUnrelayedTx(that.wallet, i);
-          let result = await that.daemon.submitTxHex(tx.getFullHex(), true);
-          assert.equal(result.isGood(), true, "Bad tx submit result: " + result.toJson());
-          
-          // test stats
-          try {
-            stats = await that.daemon.getTxPoolStats();
-            assert(stats.getNumTxs() > i);
+        let err;
+        let txIds = [];
+        try {
+
+          // submit txs to the pool but don't relay
+          for (let i = 1; i < 3; i++) {
+            
+            // submit tx hex
+            let tx = await getUnrelayedTx(that.wallet, i);
+            let result = await that.daemon.submitTxHex(tx.getFullHex(), true);
+            assert.equal(result.isGood(), true, "Bad tx submit result: " + result.toJson());
+            
+            // get tx pool stats
+            let stats = await that.daemon.getTxPoolStats();
+            assert(stats.getNumTxs() > i - 1);
             testTxPoolStats(stats);
-          } finally {
-            await that.daemon.flushTxPool(tx.getHash());
-            await that.wallet.sync();
           }
+        } catch (e) {
+          err = e;
         }
+
+        // flush txs
+        await that.daemon.flushTxPool(txIds);
+        if (err) throw err;
       });
       
       if (testConfig.testNonRelays)
@@ -1002,6 +1010,13 @@ class TestMoneroDaemonRpc {
           assert.equal(e.message, "Block not accepted");
         }
       });
+
+      if (testConfig.testNonRelays)
+      it("Can prune the blockchain", async function() {
+        let result = await that.daemon.pruneBlockchain(true);
+        assert(result.isPruned());
+        assert(result.getPruningSeed() > 0);
+      });
       
       if (testConfig.testNonRelays)
       it("Can check for an update", async function() {
@@ -1028,7 +1043,7 @@ class TestMoneroDaemonRpc {
             throw new Error("Should have thrown error");
           } catch(e) {
             assert.notEqual("Should have thrown error", e.message);
-            assert.equal(e.statusCode, 500);  // TODO monero-daemon-rpc: this causes a 500 in that.daemon rpc
+            assert.equal(e.statusCode, 500);  // TODO monerod: this causes a 500 in that.daemon rpc
           }
         }
       });
@@ -1037,10 +1052,10 @@ class TestMoneroDaemonRpc {
       it("Can be stopped", async function() {
         return; // test is disabled to not interfere with other tests
         
-        // give the that.daemon time to shut down
+        // give the daemon time to shut down
         await new Promise(function(resolve) { setTimeout(resolve, TestUtils.SYNC_PERIOD_IN_MS); });
         
-        // stop the that.daemon
+        // stop the daemon
         await that.daemon.stop();
         
         // give the daemon 10 seconds to shut down
@@ -1159,6 +1174,9 @@ class TestMoneroDaemonRpc {
           await that.daemon.flushTxPool(txHashes); // flush txs when relay fails to prevent double spends in other tests  
           throw e;
         }
+        
+        // wait for txs to be relayed // TODO (monero-project): all txs should be relayed: https://github.com/monero-project/monero/issues/8523
+        await new Promise(function(resolve) { setTimeout(resolve, 1000); });        
         
         // ensure txs are relayed
         let poolTxs = await that.daemon.getTxPool();
@@ -1315,7 +1333,7 @@ function testTx(tx, ctx) {
   
   // standard across all txs
   assert(tx.getHash().length === 64);
-  if (tx.isRelayed() === undefined) assert(tx.inTxPool());  // TODO monero-daemon-rpc: add relayed to get_transactions
+  if (tx.isRelayed() === undefined) assert(tx.inTxPool());  // TODO monerod: add relayed to get_transactions
   else assert.equal(typeof tx.isRelayed(), "boolean");
   assert.equal(typeof tx.isConfirmed(), "boolean");
   assert.equal(typeof tx.inTxPool(), "boolean");
@@ -1326,6 +1344,7 @@ function testTx(tx, ctx) {
   assert(tx.getInputs());
   assert(tx.getOutputs());
   assert(tx.getExtra().length > 0);
+  TestUtils.testUnsignedBigInteger(tx.getFee(), true);
   
   // test presence of output indices
   // TODO: change this over to outputs only
@@ -1363,13 +1382,15 @@ function testTx(tx, ctx) {
     assert.equal(tx.getLastFailedHeight(), undefined);
     assert.equal(tx.getLastFailedHash(), undefined);
     assert(tx.getReceivedTimestamp() > 0);
-    assert(tx.getSize() > 0);
-    assert(tx.getWeight() > 0);
-    assert.equal(typeof tx.isKeptByBlock(), "boolean");
+    if (ctx.fromGetTxPool) {
+      assert(tx.getSize() > 0);
+      assert(tx.getWeight() > 0);
+      assert.equal(typeof tx.isKeptByBlock(), "boolean");
+      assert(tx.getMaxUsedBlockHeight() >= 0);
+      assert(tx.getMaxUsedBlockHash());
+    }
     assert.equal(tx.getLastFailedHeight(), undefined);
     assert.equal(tx.getLastFailedHash(), undefined);
-    assert(tx.getMaxUsedBlockHeight() >= 0);
-    assert(tx.getMaxUsedBlockHash());
   } else {
     assert.equal(tx.getLastRelayedTimestamp(), undefined);
   }
@@ -1389,12 +1410,14 @@ function testTx(tx, ctx) {
     assert(tx.getOutgoingTransfer() instanceof MoneroTransfer); // TODO: MoneroTx does not have getOutgoingTransfer() but this doesn't fail?
     assert(tx.getReceivedTimestamp() > 0)
   } else {
-    if (tx.isRelayed() === undefined) assert.equal(tx.getRelay(), undefined); // TODO monero-daemon-rpc: add relayed to get_transactions
+    if (tx.isRelayed() === undefined) assert.equal(tx.getRelay(), undefined); // TODO monerod: add relayed to get_transactions
     else if (tx.isRelayed()) assert.equal(tx.isDoubleSpendSeen(), false);
     else {
       assert.equal(tx.isRelayed(), false);
-      assert.equal(tx.getRelay(), false);
-      assert.equal(typeof tx.isDoubleSpendSeen(), "boolean");
+      if (ctx.fromGetTxPool) {
+        assert.equal(tx.getRelay(), false);
+        assert.equal(typeof tx.isDoubleSpendSeen(), "boolean");
+      }
     }
   }
   assert.equal(tx.getLastFailedHeight(), undefined);
@@ -1420,7 +1443,7 @@ function testTx(tx, ctx) {
   }
   
   // test pruned vs not pruned
-  if (ctx.fromGetTxPool || ctx.fromBinaryBlock) assert.equal(tx.getPrunableHash(), undefined);   // TODO monero-daemon-rpc: tx pool txs do not have prunable hash, TODO: getBlocksByHeight() has inconsistent client-side pruning
+  if (ctx.fromGetTxPool || ctx.fromBinaryBlock) assert.equal(tx.getPrunableHash(), undefined);   // TODO monerod: tx pool txs do not have prunable hash, TODO: getBlocksByHeight() has inconsistent client-side pruning
   else assert(tx.getPrunableHash());
   if (ctx.isPruned) {
     assert.equal(tx.getRctSigPrunable(), undefined);
@@ -1595,6 +1618,7 @@ function testSubmitTxResultGood(result) {
     assert.equal(result.getSanityCheckFailed(), false);
     TestUtils.testUnsignedBigInteger(result.getCredits(), false); // 0 credits
     assert.equal(result.getTopBlockHash(), undefined);
+    assert.equal(result.isTxExtraTooBig(), false);
     assert.equal(result.isGood(), true);
   } catch (e) {
     console.log("Submit result is not good: " + JSON.stringify(result));
@@ -1635,8 +1659,10 @@ function testTxPoolStats(stats) {
     if (stats.getNumTxs() === 1) assert.equal(stats.getHisto(), undefined);
     else {
       assert(stats.getHisto());
-      console.log(stats.getHisto());
-      throw new Error("Ready to test histogram");
+      assert(stats.getHisto().size > 0);
+      for (let key of stats.getHisto().keys()) {
+        assert(stats.getHisto().get(key) >= 0);
+      }
     }
     assert(stats.getBytesMax() > 0);
     assert(stats.getBytesMed() > 0);
