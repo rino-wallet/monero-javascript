@@ -52,7 +52,7 @@ COPY . ./monero-javascript
 VOLUME /home/monero-javascript
 
 RUN cd /home/monero-javascript && \
-    ./bin/update_submodules.sh > /dev/null && \
+    ./bin/update_submodules.sh && \
     cd external/monero-cpp/external/monero-project/ && \
     git apply /home/monero-javascript/monero-patch.diff
 
