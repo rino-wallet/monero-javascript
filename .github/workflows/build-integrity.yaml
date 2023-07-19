@@ -1,0 +1,21 @@
+name: Build Integrity
+
+on:
+  push:
+    branches: [ rino ]
+  workflow_dispatch:  # manual trigger (through website or api)
+
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Generate build integrity hash
+        run: docker build -f ./build-integrity.Dockerfile -t monerojs-integrity-check .
