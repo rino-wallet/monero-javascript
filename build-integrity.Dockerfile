@@ -49,7 +49,9 @@ RUN git clone --recursive https://github.com/emscripten-core/emsdk.git > /dev/nu
 
 COPY . ./monero-javascript
 
-VOLUME /home/monero-javascript
+# Only use VOLUME if running locally and binding to a host location
+# Otherwise generated files will not persist between RUN commands...
+#VOLUME /home/monero-javascript
 
 RUN cd /home/monero-javascript && \
     ./bin/update_submodules.sh && \
