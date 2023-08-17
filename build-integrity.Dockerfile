@@ -54,7 +54,7 @@ COPY . ./monero-javascript
 #VOLUME /home/monero-javascript
 
 RUN cd /home/monero-javascript && \
-    ./bin/update_submodules.sh && \
+    ./bin/update_submodules.sh > /dev/null && \
     cd external/monero-cpp/external/monero-project/ && \
     git apply /home/monero-javascript/monero-patch.diff
 
@@ -64,6 +64,7 @@ RUN source /home/emsdk/emsdk_env.sh && \
     cd /home/monero-javascript && \
     ./bin/build_all.sh > /dev/null
 
+RUN cd /home/monero-javascript && ls -la && ls -la ./dist
 # the call to find is necessary to only hash the files that are meant to be inserted in the npm package. See the "files" section of package.json
 # the call to awk is necessary because sha256 produces "<hash> <filename>". We instead want "<filename> <hash>"
 # the call to sort is necessary to deterministically sort by "filename".
