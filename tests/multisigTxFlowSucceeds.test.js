@@ -96,9 +96,12 @@ test('reconstructValidateTx flow succeeds', async() => {
   // expect(await fe.getBalance(0, 0)).toEqual(await be.getBalance(0, 0));
 
   const loadedConfig = await fe.loadMultisigTx(unsignedTxsHex);
+  // getFee() returns a BigInteger special type unique to monero-javascript
+  // so we need to convert to a number to be able to compare to zero...
   console.log(loadedConfig.getFee());
   console.log(typeof loadedConfig.getFee());
-  expect(loadedConfig.getFee()).toBeGreaterThan(0);
+  console.log(loadedConfig.getFee().toString());
+  expect(Number(loadedConfig.getFee().toString())).toBeGreaterThan(0);
 
   // The `fe` reconstructs the unsigned tx from its hex, and puts the first partial signature. Validating
   // that the destinations encoded in the txHex match the expected ones

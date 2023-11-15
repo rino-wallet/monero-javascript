@@ -58,10 +58,7 @@ class MoneroRpcConnection {
     this._config = Object.assign({}, MoneroRpcConnection.DEFAULT_CONFIG, this._config);
     
     // normalize uri
-    if (this._config.uri) {
-      this._config.uri = this._config.uri.replace(/\/$/, ""); // strip trailing slash
-      if (!new RegExp("^\\w+://.+").test(this._config.uri)) this._config.uri = "http://" + this._config.uri; // assume http if protocol not given
-    }
+    if (this._config.uri) this._config.uri = GenUtils.normalizeUri(this._config.uri);
     
     // fail with friendly message if using old api
     if (this._config.user || this._config.pass) throw new MoneroError("Authentication fields 'user' and 'pass' have been renamed to 'username' and 'password'.  Please update to the new api");
@@ -151,26 +148,33 @@ class MoneroRpcConnection {
   /**
    * Check the connection status to update isOnline, isAuthenticated, and response time.
    * 
-   * @param {int} timeoutInMs - maximum response time before considered offline
+   * @param {int} timeoutMs - maximum response time before considered offline
    * @return {Promise<boolean>} true if there is a change in status, false otherwise
    */
-  async checkConnection(timeoutInMs) {
+  async checkConnection(timeoutMs) {
+    await LibraryUtils.loadKeysModule(); // cache wasm for binary request
     let isOnlineBefore = this._isOnline;
     let isAuthenticatedBefore = this._isAuthenticated;
     let startTime = Date.now();
     try {
       if (this._fakeDisconnected) throw new Error("Connection is fake disconnected");
-      await this.sendJsonRequest("get_version", undefined, timeoutInMs);
+      let heights = [];
+      for (let i = 0; i < 100; i++) heights.push(i);
+      await this.sendBinaryRequest("get_blocks_by_height.bin", {heights: heights}); // assume daemon connection
       this._isOnline = true;
       this._isAuthenticated = true;
     } catch (err) {
-      if (err instanceof MoneroRpcError && err.getCode() === 401) {
-        this._isOnline = true;
-        this._isAuthenticated = false;
-      } else {
-        this._isOnline = false;
-        this._isAuthenticated = undefined;
-        this._responseTime = undefined;
+      this._isOnline = false;
+      this._isAuthenticated = undefined;
+      this._responseTime = undefined;
+      if (err instanceof MoneroRpcError) {
+        if (err.getCode() === 401) {
+          this._isOnline = true;
+          this._isAuthenticated = false;
+        } else if (err.getCode() === 404) { // fallback to latency check
+          this._isOnline = true;
+          this._isAuthenticated = true;
+        }
       }
     }
     if (this._isOnline) this._responseTime = Date.now() - startTime;
@@ -367,6 +371,10 @@ class MoneroRpcConnection {
       if (err instanceof MoneroRpcError) throw err;
       else throw new MoneroRpcError(err, err.statusCode, path, params);
     }
+  }
+
+  toJson() {
+    return this._config;
   }
   
   toString() {

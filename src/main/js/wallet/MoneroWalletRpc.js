@@ -250,12 +250,11 @@ class MoneroWalletRpc extends MoneroWallet {
   async openWallet(pathOrConfig, password) {
     
     // normalize and validate config
-    let config = new MoneroWalletConfig(typeof pathOrConfig === "string" ? {path: pathOrConfig, password: password} : pathOrConfig);
+    let config = new MoneroWalletConfig(typeof pathOrConfig === "string" ? {path: pathOrConfig, password: password ? password : ""} : pathOrConfig);
     // TODO: ensure other fields are uninitialized?
     
     // open wallet on rpc server
     if (!config.getPath()) throw new MoneroError("Must provide name of wallet to open");
-    if (!config.getPassword()) throw new MoneroError("Must provide password of wallet to open");
     await this.rpc.sendJsonRequest("open_wallet", {filename: config.getPath(), password: config.getPassword()});
     await this._clear();
     this.path = config.getPath();
@@ -278,7 +277,7 @@ class MoneroWalletRpc extends MoneroWallet {
    * await walletRpc.createWallet({<br>
    * &nbsp;&nbsp; path: "mywallet",<br>
    * &nbsp;&nbsp; password: "abc123",<br>
-   * &nbsp;&nbsp; mnemonic: "coexist igloo pamphlet lagoon...",<br>
+   * &nbsp;&nbsp; seed: "coexist igloo pamphlet lagoon...",<br>
    * &nbsp;&nbsp; restoreHeight: 1543218l<br>
    * });
    *  </code>
@@ -286,16 +285,19 @@ class MoneroWalletRpc extends MoneroWallet {
    * @param {object|MoneroWalletConfig} config - MoneroWalletConfig or equivalent JS object
    * @param {string} config.path - path of the wallet to create (optional, in-memory wallet if not given)
    * @param {string} config.password - password of the wallet to create
-   * @param {string} config.mnemonic - mnemonic of the wallet to create (optional, random wallet created if neither mnemonic nor keys given)
-   * @param {string} config.seedOffset - the offset used to derive a new seed from the given mnemonic to recover a secret wallet from the mnemonic phrase
+   * @param {string} config.seed - seed of the wallet to create (optional, random wallet created if neither seed nor keys given)
+   * @param {string} config.seedOffset - the offset used to derive a new seed from the given seed to recover a secret wallet from the seed
+   * @param {boolean} config.isMultisig - restore multisig wallet from seed
    * @param {string} config.primaryAddress - primary address of the wallet to create (only provide if restoring from keys)
    * @param {string} config.privateViewKey - private view key of the wallet to create (optional)
    * @param {string} config.privateSpendKey - private spend key of the wallet to create (optional)
    * @param {number} config.restoreHeight - block height to start scanning from (defaults to 0 unless generating random wallet)
-   * @param {string} config.language - language of the wallet's mnemonic phrase (defaults to "English" or auto-detected)
+   * @param {string} config.language - language of the wallet's mnemonic phrase or seed (defaults to "English" or auto-detected)
+   * @param {MoneroRpcConnection} config.server - MoneroRpcConnection to a monero daemon (optional)<br>
    * @param {string} config.serverUri - uri of a daemon to use (optional, monero-wallet-rpc usually started with daemon config)
    * @param {string} config.serverUsername - username to authenticate with the daemon (optional)
    * @param {string} config.serverPassword - password to authenticate with the daemon (optional)
+   * @param {MoneroConnectionManager} config.connectionManager - manage connections to monerod (optional)
    * @param {boolean} config.rejectUnauthorized - reject self-signed server certificates if true (defaults to true)
    * @param {MoneroRpcConnection|object} config.server - MoneroRpcConnection or equivalent JS object providing daemon configuration (optional)
    * @param {boolean} config.saveCurrent - specifies if the current RPC wallet should be saved before being closed (default true)
@@ -305,117 +307,105 @@ class MoneroWalletRpc extends MoneroWallet {
     
     // normalize and validate config
     if (config === undefined) throw new MoneroError("Must provide config to create wallet");
-    config = config instanceof MoneroWalletConfig ? config : new MoneroWalletConfig(config);
-    if (config.getMnemonic() !== undefined && (config.getPrimaryAddress() !== undefined || config.getPrivateViewKey() !== undefined || config.getPrivateSpendKey() !== undefined)) {
-      throw new MoneroError("Wallet may be initialized with a mnemonic or keys but not both");
+    config = new MoneroWalletConfig(config);
+    if (config.getSeed() !== undefined && (config.getPrimaryAddress() !== undefined || config.getPrivateViewKey() !== undefined || config.getPrivateSpendKey() !== undefined)) {
+      throw new MoneroError("Wallet can be initialized with a seed or keys but not both");
     }
     if (config.getNetworkType() !== undefined) throw new MoneroError("Cannot provide networkType when creating RPC wallet because server's network type is already set");
     if (config.getAccountLookahead() !== undefined || config.getSubaddressLookahead() !== undefined) throw new MoneroError("monero-wallet-rpc does not support creating wallets with subaddress lookahead over rpc");
-    
+    if (config.getPassword() === undefined) config.setPassword("");
+
     // create wallet
-    if (config.getMnemonic() !== undefined) {
-      await this._createWalletFromMnemonic(config.getPath(), config.getPassword(), config.getMnemonic(), config.getRestoreHeight(), config.getLanguage(), config.getSeedOffset(), config.getSaveCurrent());
-    } else if (config.getPrivateSpendKey() !== undefined || config.getPrimaryAddress() !== undefined) {
-      if (config.getSeedOffset() !== undefined) throw new MoneroError("Cannot provide seedOffset when creating wallet from keys");
-      await this._createWalletFromKeys(config.getPath(), config.getPassword(), config.getPrimaryAddress(), config.getPrivateViewKey(), config.getPrivateSpendKey(), config.getRestoreHeight(), config.getLanguage(), config.getSaveCurrent());
-    } else {
-      if (config.getSeedOffset() !== undefined) throw new MoneroError("Cannot provide seedOffset when creating random wallet");
-      if (config.getRestoreHeight() !== undefined) throw new MoneroError("Cannot provide restoreHeight when creating random wallet");
-      if (config.getSaveCurrent() === false) throw new MoneroError("Current wallet is saved automatically when creating random wallet");
-      await this._createWalletRandom(config.getPath(), config.getPassword(), config.getLanguage());
+    if (config.getSeed() !== undefined) await this._createWalletFromSeed(config);
+    else if (config.getPrivateSpendKey() !== undefined || config.getPrimaryAddress() !== undefined) await this._createWalletFromKeys(config);
+    else await this._createWalletRandom(config);
+
+    // set daemon or connection manager
+    if (config.getConnectionManager()) {
+      if (config.getServer()) throw new MoneroError("Wallet can be initialized with a server or connection manager but not both");
+      await this.setConnectionManager(config.getConnectionManager());
+    } else if (config.getServer()) {
+      await this.setDaemonConnection(config.getServer());
     }
     
-    // set daemon if provided
-    if (config.getServer()) return this.setDaemonConnection(config.getServer());
     return this;
   }
   
   /**
    * Create and open a new wallet with a randomly generated seed on the RPC server.
    * 
-   * @param {string} name - name of the wallet file to create
-   * @param {string} password - wallet's password
-   * @param {string} language - language for the wallet's mnemonic phrase
+   * @param {MoneroWalletConfig} config - the wallet configuration
    * @return {MoneroWalletRpc} this wallet client
    */
-  async _createWalletRandom(name, password, language) {
-    if (!name) throw new MoneroError("Name is not initialized");
-    if (!password) throw new MoneroError("Password is not initialized");
-    if (!language) language = MoneroWallet.DEFAULT_LANGUAGE;
-    let params = { filename: name, password: password, language: language };
+  async _createWalletRandom(config) {
+    if (config.getSeedOffset() !== undefined) throw new MoneroError("Cannot provide seedOffset when creating random wallet");
+    if (config.getRestoreHeight() !== undefined) throw new MoneroError("Cannot provide restoreHeight when creating random wallet");
+    if (config.getSaveCurrent() === false) throw new MoneroError("Current wallet is saved automatically when creating random wallet");
+    if (!config.getPath()) throw new MoneroError("Name is not initialized");
+    if (!config.getLanguage()) config.setLanguage(MoneroWallet.DEFAULT_LANGUAGE);
+    let params = { filename: config.getPath(), password: config.getPassword(), language: config.getLanguage() };
     try {
       await this.rpc.sendJsonRequest("create_wallet", params);
     } catch (err) {
-      this._handleCreateWalletError(name, err);
+      this._handleCreateWalletError(config.getPath(), err);
     }
     await this._clear();
-    this.path = name;
+    this.path = config.getPath();
     return this;
   }
   
   /**
-   * Create and open a wallet from an existing mnemonic phrase on the RPC server,
+   * Create and open a wallet from an existing seed on the RPC server,
    * closing the currently open wallet if applicable.
    * 
-   * @param {string} name - name of the wallet to create on the RPC server
-   * @param {string} password - wallet's password
-   * @param {string} mnemonic - mnemonic of the wallet to construct
-   * @param {int} restoreHeight - block height to restore from (default = 0)
-   * @param {string} language - language of the mnemonic in case the old language is invalid
-   * @param {string} seedOffset - offset used to derive a new seed from the given mnemonic to recover a secret wallet from the mnemonic phrase
-   * @param {boolean} saveCurrent - specifies if the current RPC wallet should be saved before being closed
+   * @param {MoneroWalletConfig} config - the wallet configuration
    * @return {MoneroWalletRpc} this wallet client
    */
-  async _createWalletFromMnemonic(name, password, mnemonic, restoreHeight, language, seedOffset, saveCurrent) {
+  async _createWalletFromSeed(config) {
     try {
       await this.rpc.sendJsonRequest("restore_deterministic_wallet", {
-        filename: name,
-        password: password,
-        seed: mnemonic,
-        seed_offset: seedOffset,
-        restore_height: restoreHeight,
-        language: language,
-        autosave_current: saveCurrent
+        filename: config.getPath(),
+        password: config.getPassword(),
+        seed: config.getSeed(),
+        seed_offset: config.getSeedOffset(),
+        enable_multisig_experimental: config.isMultisig(),
+        restore_height: config.getRestoreHeight(),
+        language: config.getLanguage(),
+        autosave_current: config.getSaveCurrent()
       });
     } catch (err) {
-      this._handleCreateWalletError(name, err);
+      this._handleCreateWalletError(config.getPath(), err);
     }
     await this._clear();
-    this.path = name;
+    this.path = config.getPath();
     return this;
   }
   
   /**
    * Create a wallet on the RPC server from an address, view key, and (optionally) spend key.
    * 
-   * @param name - name of the wallet to create on the RPC server
-   * @param password - password encrypt the wallet
-   * @param networkType - wallet's network type
-   * @param address - address of the wallet to construct
-   * @param viewKey - view key of the wallet to construct
-   * @param spendKey - spend key of the wallet to construct or null to create a view-only wallet
-   * @param restoreHeight - block height to restore (i.e. scan the chain) from (default = 0)
-   * @param language - wallet and mnemonic's language (default = "English")
+   * @param {MoneroWalletConfig} config - the wallet configuration
    * @return {MoneroWalletRpc} this wallet client
    */
-  async _createWalletFromKeys(name, password, address, viewKey, spendKey, restoreHeight, language, saveCurrent) {
-    if (restoreHeight === undefined) restoreHeight = 0;
-    if (language === undefined) language = MoneroWallet.DEFAULT_LANGUAGE;
+  async _createWalletFromKeys(config) {
+    if (config.getSeedOffset() !== undefined) throw new MoneroError("Cannot provide seedOffset when creating wallet from keys");
+    if (config.getRestoreHeight() === undefined) config.setRestoreHeight(0);
+    if (config.getLanguage() === undefined) config.setLanguage(MoneroWallet.DEFAULT_LANGUAGE);
     try {
       await this.rpc.sendJsonRequest("generate_from_keys", {
-        filename: name,
-        password: password,
-        address: address,
-        viewkey: viewKey,
-        spendkey: spendKey,
-        restore_height: restoreHeight,
-        autosave_current: saveCurrent
+        filename: config.getPath(),
+        password: config.getPassword(),
+        address: config.getPrimaryAddress(),
+        viewkey: config.getPrivateViewKey(),
+        spendkey: config.getPrivateSpendKey(),
+        restore_height: config.getRestoreHeight(),
+        autosave_current: config.getSaveCurrent()
       });
     } catch (err) {
-      this._handleCreateWalletError(name, err);
+      this._handleCreateWalletError(config.getPath(), err);
     }
     await this._clear();
-    this.path = name;
+    this.path = config.getPath();
     return this;
   }
   
@@ -445,6 +435,7 @@ class MoneroWalletRpc extends MoneroWallet {
    */
   async setDaemonConnection(uriOrRpcConnection, isTrusted, sslOptions) {
     let connection = !uriOrRpcConnection ? undefined : uriOrRpcConnection instanceof MoneroRpcConnection ? uriOrRpcConnection : new MoneroRpcConnection(uriOrRpcConnection);
+    if (connection) connection.setProxyToWorker(false);
     if (!sslOptions) sslOptions = new SslOptions();
     let params = {};
     params.address = connection ? connection.getUri() : "bad_uri"; // TODO monero-wallet-rpc: bad daemon uri necessary for offline?
@@ -502,27 +493,22 @@ class MoneroWalletRpc extends MoneroWallet {
     return this.path;
   }
   
-  async getMnemonic() {
-    try {
-      let resp = await this.rpc.sendJsonRequest("query_key", { key_type: "mnemonic" });
-      return resp.result.key;
-    } catch (e) {
-      if (e.getCode() === -29) return undefined;  // wallet is view-only
-      throw e;
-    }
+  async getSeed() {
+    let resp = await this.rpc.sendJsonRequest("query_key", { key_type: "mnemonic" });
+    return resp.result.key;
   }
   
-  async getMnemonicLanguage() {
-    if (await this.getMnemonic() === undefined) return undefined;
-    throw new MoneroError("MoneroWalletRpc.getMnemonicLanguage() not supported");
+  async getSeedLanguage() {
+    if (await this.getSeed() === undefined) return undefined;
+    throw new MoneroError("MoneroWalletRpc.getSeedLanguage() not supported");
   }
 
   /**
-   * Get a list of available languages for the wallet's mnemonic phrase.
+   * Get a list of available languages for the wallet's seed.
    * 
-   * @return {string[]} the available languages for the wallet's mnemonic phrase
+   * @return {string[]} the available languages for the wallet's seed.
    */
-  async getMnemonicLanguages() {
+  async getSeedLanguages() {
     return (await this.rpc.sendJsonRequest("get_languages")).result.languages;
   }
   
@@ -532,15 +518,8 @@ class MoneroWalletRpc extends MoneroWallet {
   }
   
   async getPrivateSpendKey() {
-    
-    // get private spend key which will throw error if wallet is view-only
-    try {
-      let resp = await this.rpc.sendJsonRequest("query_key", { key_type: "spend_key" });
-      return resp.result.key;
-    } catch (e) {
-      if (e.getCode() === -29 && e.message.indexOf("watch-only") !== -1) return undefined; // return undefined if wallet is view-only
-      throw e;
-    }
+    let resp = await this.rpc.sendJsonRequest("query_key", { key_type: "spend_key" });
+    return resp.result.key;
   }
   
   async getAddress(accountIdx, subaddressIdx) {
@@ -815,7 +794,7 @@ class MoneroWalletRpc extends MoneroWallet {
     await this.rpc.sendJsonRequest("label_address", {index: {major: accountIdx, minor: subaddressIdx}, label: label});
   }
   
-  async getTxs(query, missingTxHashes) {
+  async getTxs(query) {
     
     // copy query
     query = MoneroWallet._normalizeTxQuery(query);
@@ -878,28 +857,9 @@ class MoneroWalletRpc extends MoneroWallet {
     }
     txs = txsQueried;
     
-    // collect unfound tx hashes
-    if (query.getHashes()) {
-      let unfoundTxHashes = [];
-      for (let txHash of query.getHashes()) {
-        let found = false;
-        for (let tx of txs) {
-          if (txHash === tx.getHash()) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) unfoundTxHashes.push(txHash);
-      }
-     
-      // if txs not found, collect missing hashes or throw error if no collection given
-      if (missingTxHashes) for (let unfoundTxHash of unfoundTxHashes) missingTxHashes.push(unfoundTxHash);
-      else if (unfoundTxHashes.length > 0) throw new MoneroError("Wallet missing requested tx hashes: " + unfoundTxHashes);
-    }
-    
     // special case: re-fetch txs if inconsistency caused by needing to make multiple rpc calls
     for (let tx of txs) {
-      if (tx.isConfirmed() && tx.getBlock() === undefined) {
+      if (tx.isConfirmed() && tx.getBlock() === undefined || !tx.isConfirmed() && tx.getBlock() !== undefined) {
         console.error("Inconsistency detected building txs from multiple rpc calls, re-fetching txs");
         return this.getTxs(query);
       }
@@ -1020,10 +980,11 @@ class MoneroWalletRpc extends MoneroWallet {
       assert(destination.getAmount(), "Destination amount is not defined");
       params.destinations.push({ address: destination.getAddress(), amount: destination.getAmount().toString() });
     }
+    if (config.getSubtractFeeFrom()) params.subtract_fee_from_outputs = config.getSubtractFeeFrom();
     params.account_index = accountIdx;
     params.subaddr_indices = subaddressIndices;
     params.payment_id = config.getPaymentId();
-    params.unlock_time = config.getUnlockHeight();
+    if (config.getUnlockTime() !== undefined) params.unlock_time = config.getUnlockTime().toString()
     params.do_not_relay = config.getRelay() !== true;
     assert(config.getPriority() === undefined || config.getPriority() >= 0 && config.getPriority() <= 3);
     params.priority = config.getPriority();
@@ -1031,6 +992,11 @@ class MoneroWalletRpc extends MoneroWallet {
     params.get_tx_metadata = true;
     if (config.getCanSplit()) params.get_tx_keys = true; // param to get tx key(s) depends if split
     else params.get_tx_key = true;
+
+    // cannot apply subtractFeeFrom with `transfer_split` call
+    if (config.getCanSplit() && config.getSubtractFeeFrom() && config.getSubtractFeeFrom().length > 0) {
+      throw new MoneroError("subtractfeefrom transfers cannot be split over multiple transactions yet");
+    }
     
     // send request
     let result;
@@ -1059,8 +1025,8 @@ class MoneroWalletRpc extends MoneroWallet {
     if (config.getRelay()) await this._poll();
     
     // initialize tx set from rpc response with pre-initialized txs
-    if (config.getCanSplit()) return MoneroWalletRpc._convertRpcSentTxsToTxSet(result, txs).getTxs();
-    else return MoneroWalletRpc._convertRpcTxToTxSet(result, txs === undefined ? undefined : txs[0], true).getTxs();
+    if (config.getCanSplit()) return MoneroWalletRpc._convertRpcSentTxsToTxSet(result, txs, config).getTxs();
+    else return MoneroWalletRpc._convertRpcTxToTxSet(result, txs === undefined ? undefined : txs[0], true, config).getTxs();
   }
 
   async reconstructTx(multisigTxHex) {
@@ -1075,13 +1041,13 @@ class MoneroWalletRpc extends MoneroWallet {
     // normalize and validate config
     config = MoneroWallet._normalizeSweepOutputConfig(config);
     
-    // build config parameters
+    // build request parameters
     let params = {};
     params.address = config.getDestinations()[0].getAddress();
     params.account_index = config.getAccountIndex();
     params.subaddr_indices = config.getSubaddressIndices();
     params.key_image = config.getKeyImage();
-    params.unlock_time = config.getUnlockHeight();
+    if (config.getUnlockTime() !== undefined) params.unlock_time = config.getUnlockTime();
     params.do_not_relay = config.getRelay() !== true;
     assert(config.getPriority() === undefined || config.getPriority() >= 0 && config.getPriority() <= 3);
     params.priority = config.getPriority();
@@ -1098,8 +1064,8 @@ class MoneroWalletRpc extends MoneroWallet {
     if (config.getRelay()) await this._poll();
     
     // build and return tx
-    let tx = MoneroWalletRpc._initSentTxWallet(config, null, true);
-    MoneroWalletRpc._convertRpcTxToTxSet(result, tx, true);
+    let tx = MoneroWalletRpc._initSentTxWallet(config, undefined, true);
+    MoneroWalletRpc._convertRpcTxToTxSet(result, tx, true, config);
     tx.getOutgoingTransfer().getDestinations()[0].setAmount(tx.getOutgoingTransfer().getAmount()); // initialize destination amount
     return tx;
   }
@@ -1548,7 +1514,7 @@ class MoneroWalletRpc extends MoneroWallet {
   }
   
   async changePassword(oldPassword, newPassword) {
-    return this.rpc.sendJsonRequest("change_wallet_password", {old_password: oldPassword, new_password: newPassword});
+    return this.rpc.sendJsonRequest("change_wallet_password", {old_password: oldPassword || "", new_password: newPassword || ""});
   }
   
   async save() {
@@ -1556,6 +1522,7 @@ class MoneroWalletRpc extends MoneroWallet {
   }
   
   async close(save) {
+    await super.close(save);
     if (save === undefined) save = false;
     await this._clear();
     await this.rpc.sendJsonRequest("close_wallet", {autosave_current: save});
@@ -1810,6 +1777,7 @@ class MoneroWalletRpc extends MoneroWallet {
     if (config.getKeyImage() !== undefined) throw new MoneroError("Key image defined; use sweepOutput() to sweep an output by its key image");
     if (config.getSubaddressIndices() !== undefined && config.getSubaddressIndices().length === 0) throw new MoneroError("Empty list given for subaddresses indices to sweep");
     if (config.getSweepEachSubaddress()) throw new MoneroError("Cannot sweep each subaddress with RPC `sweep_all`");
+    if (config.getSubtractFeeFrom() !== undefined && config.getSubtractFeeFrom().length > 0) throw new MoneroError("Sweeping output does not support subtracting fees from destinations");
     
     // sweep from all subaddresses if not otherwise defined
     if (config.getSubaddressIndices() === undefined) {
@@ -1828,7 +1796,7 @@ class MoneroWalletRpc extends MoneroWallet {
     params.address = config.getDestinations()[0].getAddress();
     assert(config.getPriority() === undefined || config.getPriority() >= 0 && config.getPriority() <= 3);
     params.priority = config.getPriority();
-    params.unlock_time = config.getUnlockHeight();
+    if (config.getUnlockTime() !== undefined) params.unlock_time = config.getUnlockTime();
     params.payment_id = config.getPaymentId();
     params.do_not_relay = !relay;
     params.below_amount = config.getBelowAmount();
@@ -1841,7 +1809,7 @@ class MoneroWalletRpc extends MoneroWallet {
     let result = resp.result;
     
     // initialize txs from response
-    let txSet = MoneroWalletRpc._convertRpcSentTxsToTxSet(result);
+    let txSet = MoneroWalletRpc._convertRpcSentTxsToTxSet(result, undefined, config);
     
     // initialize remaining known fields
     for (let tx of txSet.getTxs()) {
@@ -1861,7 +1829,7 @@ class MoneroWalletRpc extends MoneroWallet {
       transfer.setDestinations([destination]);
       tx.setOutgoingTransfer(transfer);
       tx.setPaymentId(config.getPaymentId());
-      if (tx.getUnlockHeight() === undefined) tx.setUnlockHeight(config.getUnlockHeight() === undefined ? 0 : config.getUnlockHeight());
+      if (tx.getUnlockTime() === undefined) tx.setUnlockTime(config.getUnlockTime() === undefined ? 0 : config.getUnlockTime());
       if (tx.getRelay()) {
         if (tx.getLastRelayedTimestamp() === undefined) tx.setLastRelayedTimestamp(+new Date().getTime());  // TODO (monero-wallet-rpc): provide timestamp on response; unconfirmed timestamps vary
         if (tx.isDoubleSpendSeen() === undefined) tx.setIsDoubleSpend(false);
@@ -1969,6 +1937,8 @@ class MoneroWalletRpc extends MoneroWallet {
   /**
    * Initializes a sent transaction.
    * 
+   * TODO: remove copyDestinations after >18.2.2 when subtractFeeFrom fully supported
+   * 
    * @param {MoneroTxConfig} config - send config
    * @param {MoneroTxWallet} tx - existing transaction to initialize (optional)
    * @param {boolean} copyDestinations - copies config destinations if true
@@ -1996,7 +1966,7 @@ class MoneroWalletRpc extends MoneroWallet {
     }
     tx.setOutgoingTransfer(transfer);
     tx.setPaymentId(config.getPaymentId());
-    if (tx.getUnlockHeight() === undefined) tx.setUnlockHeight(config.getUnlockHeight() === undefined ? 0 : config.getUnlockHeight());
+    if (tx.getUnlockTime() === undefined) tx.setUnlockTime(config.getUnlockTime() === undefined ? 0 : config.getUnlockTime());
     if (config.getRelay()) {
       if (tx.getLastRelayedTimestamp() === undefined) tx.setLastRelayedTimestamp(+new Date().getTime());  // TODO (monero-wallet-rpc): provide timestamp on response; unconfirmed timestamps vary
       if (tx.isDoubleSpendSeen() === undefined) tx.setIsDoubleSpend(false);
@@ -2023,13 +1993,14 @@ class MoneroWalletRpc extends MoneroWallet {
   }
   
   /**
-   * Initializes a MoneroTxSet from from a list of rpc txs.
+   * Initializes a MoneroTxSet from a list of rpc txs.
    * 
    * @param rpcTxs - rpc txs to initialize the set from
    * @param txs - existing txs to further initialize (optional)
+   * @param config - tx config
    * @return the converted tx set
    */
-  static _convertRpcSentTxsToTxSet(rpcTxs, txs) {
+  static _convertRpcSentTxsToTxSet(rpcTxs, txs, config) {
     
     // build shared tx set
     let txSet = MoneroWalletRpc._convertRpcTxSet(rpcTxs);
@@ -2066,8 +2037,8 @@ class MoneroWalletRpc extends MoneroWallet {
       else if (key === "weight_list") for (let i = 0; i < val.length; i++) txs[i].setWeight(val[i]);
       else if (key === "amount_list") {
         for (let i = 0; i < val.length; i++) {
-          if (txs[i].getOutgoingTransfer() !== undefined) txs[i].getOutgoingTransfer().setAmount(new BigInteger(val[i]));
-          else txs[i].setOutgoingTransfer(new MoneroOutgoingTransfer().setTx(txs[i]).setAmount(new BigInteger(val[i])));
+          if (txs[i].getOutgoingTransfer() == undefined) txs[i].setOutgoingTransfer(new MoneroOutgoingTransfer().setTx(txs[i]));
+          txs[i].getOutgoingTransfer().setAmount(new BigInteger(val[i]));
         }
       }
       else if (key === "multisig_txset" || key === "unsigned_txset" || key === "signed_txset") {} // handled elsewhere
@@ -2078,6 +2049,19 @@ class MoneroWalletRpc extends MoneroWallet {
           txs[i].setInputs([]);
           for (let inputKeyImage of inputKeyImagesList[i]["key_images"]) {
             txs[i].getInputs().push(new MoneroOutputWallet().setKeyImage(new MoneroKeyImage().setHex(inputKeyImage)).setTx(txs[i]));
+          }
+        }
+      }
+      else if (key === "amounts_by_dest_list") {
+        let amountsByDestList = val;
+        let destinationIdx = 0;
+        for (let txIdx = 0; txIdx < amountsByDestList.length; txIdx++) {
+          let amountsByDest = amountsByDestList[txIdx]["amounts"];
+          if (txs[txIdx].getOutgoingTransfer() === undefined) txs[txIdx].setOutgoingTransfer(new MoneroOutgoingTransfer().setTx(txs[txIdx]));
+          txs[txIdx].getOutgoingTransfer().setDestinations([]);
+          for (let amount of amountsByDest) {
+            if (config.getDestinations().length === 1) txs[txIdx].getOutgoingTransfer().getDestinations().push(new MoneroDestination(config.getDestinations()[0].getAddress(), new BigInteger(amount))); // sweeping can create multiple txs with one address
+            else txs[txIdx].getOutgoingTransfer().getDestinations().push(new MoneroDestination(config.getDestinations()[destinationIdx++].getAddress(), new BigInteger(amount)));
           }
         }
       }
@@ -2093,11 +2077,12 @@ class MoneroWalletRpc extends MoneroWallet {
    * @param rpcTx - rpc tx to build from
    * @param tx - existing tx to continue initializing (optional)
    * @param isOutgoing - specifies if the tx is outgoing if true, incoming if false, or decodes from type if undefined
+   * @param config - tx config
    * @returns the initialized tx set with a tx
    */
-  static _convertRpcTxToTxSet(rpcTx, tx, isOutgoing) {
+  static _convertRpcTxToTxSet(rpcTx, tx, isOutgoing, config) {
     let txSet = MoneroWalletRpc._convertRpcTxSet(rpcTx);
-    txSet.setTxs([MoneroWalletRpc._convertRpcTxWithTransfer(rpcTx, tx, isOutgoing).setTxSet(txSet)]);
+    txSet.setTxs([MoneroWalletRpc._convertRpcTxWithTransfer(rpcTx, tx, isOutgoing, config).setTxSet(txSet)]);
     return txSet;
   }
   
@@ -2107,9 +2092,10 @@ class MoneroWalletRpc extends MoneroWallet {
    * @param rpcTx - rpc tx to build from
    * @param tx - existing tx to continue initializing (optional)
    * @param isOutgoing - specifies if the tx is outgoing if true, incoming if false, or decodes from type if undefined
+   * @param config - tx config
    * @returns {MoneroTxWallet} is the initialized tx
    */
-  static _convertRpcTxWithTransfer(rpcTx, tx, isOutgoing) {  // TODO: change everything to safe set
+  static _convertRpcTxWithTransfer(rpcTx, tx, isOutgoing, config) {  // TODO: change everything to safe set
         
     // initialize tx to return
     if (!tx) tx = new MoneroTxWallet();
@@ -2131,7 +2117,7 @@ class MoneroWalletRpc extends MoneroWallet {
       else if (key === "tx_key") tx.setKey(val);
       else if (key === "type") { } // type already handled
       else if (key === "tx_size") tx.setSize(val);
-      else if (key === "unlock_time") tx.setUnlockHeight(val);
+      else if (key === "unlock_time") tx.setUnlockTime(val);
       else if (key === "weight") tx.setWeight(val);
       else if (key === "locked") tx.setIsLocked(val);
       else if (key === "tx_blob") tx.setFullHex(val);
@@ -2216,7 +2202,17 @@ class MoneroWalletRpc extends MoneroWallet {
           tx.getInputs().push(new MoneroOutputWallet().setKeyImage(new MoneroKeyImage().setHex(inputKeyImage)).setTx(tx));
         }
       }
-      else console.log("WARNING: ignoring unexpected transaction field: " + key + ": " + val);
+      else if (key === "amounts_by_dest") {
+        GenUtils.assertTrue(isOutgoing);
+        let amountsByDest = val.amounts;
+        assert.equal(config.getDestinations().length, amountsByDest.length);
+        if (transfer === undefined) transfer = new MoneroOutgoingTransfer().setTx(tx);
+        transfer.setDestinations([]);
+        for (let i = 0; i < config.getDestinations().length; i++) {
+          transfer.getDestinations().push(new MoneroDestination(config.getDestinations()[i].getAddress(), new BigInteger(amountsByDest[i])));
+        }
+      }
+      else console.log("WARNING: ignoring unexpected transaction field with transfer: " + key + ": " + val);
     }
     
     // link block and tx
@@ -2228,7 +2224,10 @@ class MoneroWalletRpc extends MoneroWallet {
       if (!transfer.getTx().isConfirmed()) tx.setNumConfirmations(0);
       if (isOutgoing) {
         tx.setIsOutgoing(true);
-        if (tx.getOutgoingTransfer()) tx.getOutgoingTransfer().merge(transfer);
+        if (tx.getOutgoingTransfer()) {
+          if (transfer.getDestinations()) tx.getOutgoingTransfer().setDestinations(undefined); // overwrite to avoid reconcile error TODO: remove after >18.2.2 when amounts_by_dest supported
+          tx.getOutgoingTransfer().merge(transfer);
+        }
         else tx.setOutgoingTransfer(transfer);
       } else {
         tx.setIsIncoming(true);
@@ -2451,18 +2450,21 @@ class WalletPoller {
   }
   
   async poll() {
+
+    // skip if next poll is queued
+    if (this._numPolling > 1) return;
+    this._numPolling++;
     
     // synchronize polls
     let that = this;
     return this._threadPool.submit(async function() {
       try {
         
-        // skip if next poll is already queued
-        if (that._numPolling > 1) return;
-        that._numPolling++;
-        
         // skip if wallet is closed
-        if (await that._wallet.isClosed()) return;
+        if (await that._wallet.isClosed()) {
+          that._numPolling--;
+          return;
+        }
         
         // take initial snapshot
         if (that._prevHeight === undefined) {
@@ -2496,7 +2498,7 @@ class WalletPoller {
         that._prevLockedTxs = lockedTxs;
         
         // fetch txs which are no longer locked
-        let unlockedTxs = noLongerLockedHashes.length === 0 ? [] : await that._wallet.getTxs(new MoneroTxQuery().setIsLocked(false).setMinHeight(minHeight).setHashes(noLongerLockedHashes).setIncludeOutputs(true), []); // ignore missing tx hashes which could be removed due to re-org
+        let unlockedTxs = noLongerLockedHashes.length === 0 ? [] : await that._wallet.getTxs(new MoneroTxQuery().setIsLocked(false).setMinHeight(minHeight).setHashes(noLongerLockedHashes).setIncludeOutputs(true));
          
         // announce new unconfirmed and confirmed outputs
         for (let lockedTx of lockedTxs) {

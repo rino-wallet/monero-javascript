@@ -1,6 +1,6 @@
 const monerojs = require("@rino-wallet/monero-javascript");
 
-const moneroDaemonUrl = 'stagenet.community.rino.io:38081';
+const moneroDaemonUrl = 'stagenet.tools.rino.io:38081';
 const moneroNetwork = monerojs.MoneroNetworkType.STAGENET;
 const defaultWalletsPassword = 'password'
 

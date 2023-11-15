@@ -58,8 +58,6 @@ self.initOneTime = async function() {
 
 // --------------------------- STATIC UTILITIES -------------------------------
 
-// TODO: object id not needed for static utilites, using throwaway uuid
-
 self.httpRequest = async function(objectId, opts) {
   try {
     return await HttpClient.request(Object.assign(opts, {proxyToWorker: false}));
@@ -441,16 +439,16 @@ self.getNetworkType = async function(walletId) {
 //  throw new Error("Not implemented");
 //}
 
-self.getMnemonic = async function(walletId) {
-  return self.WORKER_OBJECTS[walletId].getMnemonic();
+self.getSeed = async function(walletId) {
+  return self.WORKER_OBJECTS[walletId].getSeed();
 }
 
-self.getMnemonicLanguage = async function(walletId) {
-  return self.WORKER_OBJECTS[walletId].getMnemonicLanguage();
+self.getSeedLanguage = async function(walletId) {
+  return self.WORKER_OBJECTS[walletId].getSeedLanguage();
 }
 
-self.getMnemonicLanguages = async function(walletId) {
-  return self.WORKER_OBJECTS[walletId].getMnemonicLanguages();
+self.getSeedLanguages = async function(walletId) {
+  return self.WORKER_OBJECTS[walletId].getSeedLanguages();
 }
 
 self.getPrivateSpendKey = async function(walletId) {
@@ -490,7 +488,7 @@ self.decodeIntegratedAddress = async function(walletId, integratedAddress) {
 }
 
 self.setDaemonConnection = async function(walletId, config) {
-  return self.WORKER_OBJECTS[walletId].setDaemonConnection(config ? new MoneroRpcConnection(config) : undefined);
+  return self.WORKER_OBJECTS[walletId].setDaemonConnection(config ? new MoneroRpcConnection(Object.assign(config, {proxyToWorker: false})) : undefined);
 }
 
 self.getDaemonConnection = async function(walletId) {
@@ -654,13 +652,13 @@ self.createSubaddress = async function(walletId, accountIdx, label) {
 }
 
 // TODO: easier or more efficient way than serializing from root blocks?
-self.getTxs = async function(walletId, blockJsonQuery, missingTxHashes) {
+self.getTxs = async function(walletId, blockJsonQuery) {
   
   // deserialize query which is json string rooted at block
   let query = new MoneroBlock(blockJsonQuery, MoneroBlock.DeserializationType.TX_QUERY).getTxs()[0];
   
   // get txs
-  let txs = await self.WORKER_OBJECTS[walletId].getTxs(query, missingTxHashes);
+  let txs = await self.WORKER_OBJECTS[walletId].getTxs(query);
   
   // collect unique blocks to preserve model relationships as trees (based on monero_wasm_bridge.cpp::get_txs)
   let seenBlocks = new Set();
@@ -680,7 +678,7 @@ self.getTxs = async function(walletId, blockJsonQuery, missingTxHashes) {
   
   // serialize blocks to json
   for (let i = 0; i < blocks.length; i++) blocks[i] = blocks[i].toJson();
-  return {blocks: blocks, missingTxHashes: missingTxHashes};
+  return {blocks: blocks};
 }
 
 self.getTransfers = async function(walletId, blockJsonQuery) {

@@ -38,19 +38,19 @@ class HttpClient {
     // proxy to worker if configured
     if (request.proxyToWorker) {
       try {
-        return await LibraryUtils.invokeWorker(GenUtils.getUUID(), "httpRequest", request);
+        return await LibraryUtils.invokeWorker(undefined, "httpRequest", request);
       } catch (err) {
         if (err.message.length > 0 && err.message.charAt(0) === "{") {
           let parsed = JSON.parse(err.message);
           err.message = parsed.statusMessage;
           err.statusCode = parsed.statusCode;
-          throw err;
         }
+        throw err;
       }
     }
     
     // assign defaults
-    request = Object.assign(HttpClient._DEFAULT_REQUEST, request);
+    request = Object.assign({}, HttpClient._DEFAULT_REQUEST, request);
     
     // validate request
     try { request.host = new URL(request.uri).host; } // hostname:port

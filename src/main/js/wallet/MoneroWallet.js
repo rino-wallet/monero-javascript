@@ -1,6 +1,7 @@
 const assert = require("assert");
 const MoneroBlock = require("../daemon/model/MoneroBlock");
 const BigInteger = require("../common/biginteger").BigInteger;
+const MoneroConnectionManagerListener = require("../common/MoneroConnectionManagerListener")
 const MoneroError = require("../common/MoneroError");
 const MoneroOutputQuery = require("./model/MoneroOutputQuery");
 const MoneroTransferQuery = require("./model/MoneroTransferQuery");
@@ -93,6 +94,34 @@ class MoneroWallet {
   async getDaemonConnection() {
     throw new MoneroError("Not supported");
   }
+
+  /**
+   * Set the wallet's daemon connection manager.
+   * 
+   * @param {MoneroConnectionManager} connectionManager manages connections to monerod
+   */
+  async setConnectionManager(connectionManager) {
+    if (this._connectionManager) this._connectionManager.removeListener(this._connectionManagerListener);
+    this._connectionManager = connectionManager;
+    if (!connectionManager) return;
+    let that = this;
+    if (!this._connectionManagerListener) this._connectionManagerListener = new class extends MoneroConnectionManagerListener {
+      async onConnectionChanged(connection) {
+        await that.setDaemonConnection(connection);
+      }
+    };
+    connectionManager.addListener(this._connectionManagerListener);
+    await this.setDaemonConnection(connectionManager.getConnection());
+  }
+
+  /**
+   * Get the wallet's daemon connection manager.
+   * 
+   * @return {MoneroConnectionManager} the wallet's daemon connection manager
+   */
+  getConnectionManager() {
+    return this._connectionManager;
+  }
   
   /**
    * Indicates if the wallet is connected to daemon.
@@ -122,20 +151,20 @@ class MoneroWallet {
   }
   
   /**
-   * Get the wallet's mnemonic phrase derived from the seed.
+   * Get the wallet's mnemonic phrase or seed.
    * 
-   * @return {string} the wallet's mnemonic phrase
+   * @return {string} the wallet's mnemonic phrase or seed.
    */
-  async getMnemonic() {
+  async getSeed() {
     throw new MoneroError("Not supported");
   }
   
   /**
-   * Get the language of the wallet's mnemonic phrase.
+   * Get the language of the wallet's mnemonic phrase or seed.
    * 
-   * @return {string} the language of the wallet's mnemonic phrase
+   * @return {string} the language of the wallet's mnemonic phrase or seed.
    */
-  async getMnemonicLanguage() {
+  async getSeedLanguage() {
     throw new MoneroError("Not supported");
   }
   
@@ -360,7 +389,7 @@ class MoneroWallet {
       txs = await this.getTxs({isLocked: true}); // get locked txs
       height = await this.getHeight(); // get most recent height
       for (let tx of txs) {
-        let numBlocksToUnlock = Math.max((tx.isConfirmed() ? tx.getHeight() : height) + 10, tx.getUnlockHeight()) - height;
+        let numBlocksToUnlock = Math.max((tx.isConfirmed() ? tx.getHeight() : height) + 10, tx.getUnlockTime()) - height;
         numBlocksToNextUnlock = numBlocksToNextUnlock === undefined ? numBlocksToUnlock : Math.min(numBlocksToNextUnlock, numBlocksToUnlock);
       }
     }
@@ -375,7 +404,7 @@ class MoneroWallet {
         height = await this.getHeight(); // get most recent height
       }
       for (let tx of txs) {
-        let numBlocksToUnlock = Math.max((tx.isConfirmed() ? tx.getHeight() : height) + 10, tx.getUnlockHeight()) - height;
+        let numBlocksToUnlock = Math.max((tx.isConfirmed() ? tx.getHeight() : height) + 10, tx.getUnlockTime()) - height;
         numBlocksToLastUnlock = numBlocksToLastUnlock === undefined ? numBlocksToUnlock : Math.max(numBlocksToLastUnlock, numBlocksToUnlock);
       }
     }
@@ -475,8 +504,7 @@ class MoneroWallet {
    * Get a wallet transaction by hash.
    * 
    * @param {string} txHash - hash of a transaction to get
-   * @return {MoneroTxWallet} the identified transactions
-   * @throws {MoneroError} if the transaction is not found
+   * @return {MoneroTxWallet} the identified transaction or undefined if not found
    */
   async getTx(txHash) {
     let txs = await this.getTxs([txHash]);
@@ -508,10 +536,9 @@ class MoneroWallet {
    * @param {boolean} query.isIncoming - get txs with an incoming transfer or not (optional)
    * @param {MoneroTransferQuery} query.transferQuery - get txs that have a transfer that meets this query (optional)
    * @param {boolean} query.includeOutputs - specifies that tx outputs should be returned with tx results (optional)
-   * @param {string[]} missingTxHashes - populated with hashes of unfound or unmet transactions that were queried by hash (throws error if undefined and queried transaction hashes are unfound or unmet) 
    * @return {MoneroTxWallet[]} wallet transactions per the configuration
    */
-  async getTxs(query, missingTxHashes) {
+  async getTxs(query) {
     throw new MoneroError("Not supported");
   }
 
@@ -698,8 +725,9 @@ class MoneroWallet {
    * @param {boolean} config.relay - relay the transaction to peers to commit to the blockchain (default false)
    * @param {MoneroTxPriority} config.priority - transaction priority (default MoneroTxPriority.NORMAL)
    * @param {MoneroDestination[]} config.destinations - addresses and amounts in a multi-destination tx (required unless `address` and `amount` provided)
+   * @param {int[]} config.subtractFeeFrom - list of destination indices to split the transaction fee (optional)
    * @param {string} config.paymentId - transaction payment ID (optional)
-   * @param {int} config.unlockHeight - minimum height for the transaction to unlock (default 0)
+   * @param {BigInteger|string} config.unlockTime - minimum height or timestamp for the transaction to unlock (default 0)
    * @return {MoneroTxWallet} the created transaction
    */
   async createTx(config) {
@@ -752,7 +780,7 @@ class MoneroWallet {
    * @param {MoneroTxPriority} config.priority - transaction priority (default MoneroTxPriority.NORMAL)
    * @param {MoneroDestination[]} config.destinations - addresses and amounts in a multi-destination tx (required unless `address` and `amount` provided)
    * @param {string} config.paymentId - transaction payment ID (optional)
-   * @param {int} config.unlockHeight - minimum height for the transactions to unlock (default 0)
+   * @param {BigInteger|string} config.unlockTime - minimum height or timestamp for the transactions to unlock (default 0)
    * @param {boolean} config.canSplit - allow funds to be transferred using multiple transactions (default true)
    * @return {MoneroTxWallet[]} the created transactions
    */
@@ -767,7 +795,7 @@ class MoneroWallet {
    * @param {string} config.address - single destination address (required)
    * @param {string} config.keyImage - key image to sweep (required)
    * @param {boolean} config.relay - relay the transaction to peers to commit to the blockchain (default false)
-   * @param {int} config.unlockHeight - minimum height for the transaction to unlock (default 0)
+   * @param {BigInteger|string} config.unlockTime - minimum height or timestamp for the transaction to unlock (default 0)
    * @param {MoneroTxPriority} config.priority - transaction priority (default MoneroTxPriority.NORMAL)
    * @return {MoneroTxWallet} the created transaction
    */
@@ -785,7 +813,7 @@ class MoneroWallet {
    * @param {int[]} config.subaddressIndices - source subaddress indices to sweep from (optional)
    * @param {boolean} config.relay - relay the transactions to peers to commit to the blockchain (default false)
    * @param {MoneroTxPriority} config.priority - transaction priority (default MoneroTxPriority.NORMAL)
-   * @param {int} config.unlockHeight - minimum height for the transactions to unlock (default 0)
+   * @param {BigInteger|string} config.unlockTime - minimum height or timestamp for the transactions to unlock (default 0)
    * @param {boolean} config.sweepEachSubaddress - sweep each subaddress individually if true (default false)
    * @return {MoneroTxWallet[]} the created transactions
    */
@@ -1307,7 +1335,9 @@ class MoneroWallet {
    * @param {boolean} save - specifies if the wallet should be saved before being closed (default false)
    */
   async close(save) {
-    throw new MoneroError("Not supported");
+    if (this._connectionManager) this._connectionManager.removeListener(this._connectionManagerListener);
+    this._connectionManager = undefined;
+    this._connectionManagerListener = undefined;
   }
   
   /**
@@ -1396,7 +1426,8 @@ class MoneroWallet {
     assert.equal(config.getBelowAmount(), undefined);
     assert.equal(config.getCanSplit(), undefined, "Cannot split transactions when sweeping an output");
     if (!config.getDestinations() || config.getDestinations().length !== 1 || !config.getDestinations()[0].getAddress()) throw new MoneroError("Must provide exactly one destination address to sweep output to");
-    return config;
+    if (config.getSubtractFeeFrom() && config.getSubtractFeeFrom().length > 0) throw new MoneroError("Sweep transfers do not support subtracting fees from destinations");
+    return config;  
   }
   
   static _normalizeSweepUnlockedConfig(config) {

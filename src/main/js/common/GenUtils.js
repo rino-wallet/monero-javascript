@@ -342,7 +342,7 @@ class GenUtils {
    * @param msg is the message to throw if the arguments are not equal
    */
   static assertEquals(arg1, arg2, msg) {
-    GenUtils.assertTrue(equals(arg1, arg2), msg ? msg : "Arguments asserted as equal but are not equal: " + arg1 + " vs " + arg2);
+    GenUtils.assertTrue(GenUtils.equals(arg1, arg2), msg ? msg : "Arguments asserted as equal but are not equal: " + arg1 + " vs " + arg2);
   }
 
   /**
@@ -1546,6 +1546,19 @@ class GenUtils {
         reject(err);
       }
     });
+  }
+
+  /**
+   * Normalize a URI.
+   * 
+   * @param {string} uri - the URI to normalize
+   * @return {string} the normalized URI
+   */
+  static normalizeUri(uri) {
+    if (!uri) throw Error("Must provide URI to normalize");
+    uri = uri.replace(/\/$/, ""); // strip trailing slash
+    if (!new RegExp("^\\w+://.+").test(uri)) uri= "http://" + uri; // assume http if protocol not given
+    return uri;
   }
 }
 

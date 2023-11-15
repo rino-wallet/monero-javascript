@@ -22,6 +22,7 @@ namespace monero_wasm_bridge
 
   // ------------------------------ UTILITIES ---------------------------------
 
+  void set_log_level(int level);
   string get_integrated_address_util(int network_type, const string& standard_address, const string& payment_id);
   string validate_address(const string& address, int network_type);
   string get_exception_message(int exception_ptr);
@@ -33,12 +34,12 @@ namespace monero_wasm_bridge
 
   void open_wallet_full(const string& password, int network_type, const string& keys_data, const string& cache_data, const string& daemon_uri, const string& daemon_username, const string& daemon_password, const string& reject_unauthorized_fn_id, emscripten::val callback);
   void create_full_wallet(const string& config_json, const string& reject_unauthorized_fn_id, emscripten::val callback);
-  string get_full_wallet_mnemonic_languages();
+  string get_full_wallet_seed_languages();
 
-  void create_keys_wallet_random(int network_type, const string& language, emscripten::val callback);
-  void create_keys_wallet_from_mnemonic(int network_type, const string& mnemonic, const string& seed_offset, emscripten::val callback);
-  void create_keys_wallet_from_keys(int network_type, const string& address, const string& view_key, const string& spend_key, const string& language, emscripten::val callback);
-  string get_keys_wallet_mnemonic_languages();
+  void create_keys_wallet_random(const string& config_json, emscripten::val callback);
+  void create_keys_wallet_from_seed(const string& config_json, emscripten::val callback);
+  void create_keys_wallet_from_keys(const string& config_json, emscripten::val callback);
+  string get_keys_wallet_seed_languages();
 
   // ----------------------- WALLET INSTANCE METHODS --------------------------
 
@@ -48,8 +49,8 @@ namespace monero_wasm_bridge
   void is_connected_to_daemon(int handle, emscripten::val callback);
   void get_daemon_max_peer_height(int handle, emscripten::val callback);
   string get_version(int handle);
-  string get_mnemonic(int handle);
-  string get_mnemonic_language(int handle);
+  string get_seed(int handle);
+  string get_seed_language(int handle);
   string get_public_view_key(int handle);
   string get_private_view_key(int handle);
   string get_public_spend_key(int handle);
@@ -149,7 +150,7 @@ namespace monero_wasm_bridge
   void change_wallet_password(int handle, const string& old_password, const string& new_password, emscripten::val callback);
   void close(int handle, bool save, emscripten::val callback);
   string get_keys_file_buffer(int handle, string password, bool view_only);
-  string get_cache_file_buffer(int handle, string password);
+  string get_cache_file_buffer(int handle);
 }
 
 #endif /* monero_wasm_bridge_h */

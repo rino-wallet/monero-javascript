@@ -15,11 +15,22 @@ class MoneroWalletConfig {
    * @param {string} config.path - path of the wallet to open or create
    * @param {string} config.password - password of the wallet to open
    * @param {string|number} config.networkType - network type of the wallet to open (one of "mainnet", "testnet", "stagenet" or MoneroNetworkType.MAINNET|TESTNET|STAGENET)
+   * @param {string} config.seed - seed of the wallet to create (optional, random wallet created if neither seed nor keys given)
+   * @param {string} config.seedOffset - the offset used to derive a new seed from the given seed to recover a secret wallet from the seed phrase
+   * @param {boolean} config.isMultisig - restore multisig wallet from seed
+   * @param {string} config.primaryAddress - primary address of the wallet to create (only provide if restoring from keys)
+   * @param {string} config.privateViewKey - private view key of the wallet to create (optional)
+   * @param {string} config.privateSpendKey - private spend key of the wallet to create (optional)
+   * @param {number} config.restoreHeight - block height to start scanning from (defaults to 0 unless generating random wallet)
+   * @param {string} config.language - language of the wallet's seed phrase (defaults to "English" or auto-detected)
+   * @param {number} config.accountLookahead -  number of accounts to scan (optional)
+   * @param {number} config.subaddressLookahead - number of subaddresses to scan per account (optional)
+   * @param {MoneroRpcConnection|object} config.server - MoneroRpcConnection or equivalent JS object configuring the server connection (optional)
    * @param {string} config.serverUri - uri of the wallet's server (optional)
    * @param {string} config.serverUsername - username of the wallet's server (optional)
    * @param {string} config.serverPassword - password of the wallet's server (optional)
+   * @param {MoneroConnectionManager} config.connectionManager - manage connections to monerod (optional)
    * @param {boolean} config.rejectUnauthorized - reject self-signed server certificates if true (default true)
-   * @param {MoneroRpcConnection|object} config.server - MoneroRpcConnection or equivalent JS object configuring the server connection (optional)
    * @param {Uint8Array} config.keysData - wallet keys data to open (optional)
    * @param {Uint8Array} config.cacheData - wallet cache data to open (optional)
    * @param {boolean} config.proxyToWorker - proxies wallet operations to a worker in order to not block the main thread (default true)
@@ -32,7 +43,7 @@ class MoneroWalletConfig {
     
     // initialize internal config
     if (!config) config = {};
-    else if (config instanceof MoneroWalletConfig) config = config.toJson();
+    else if (config instanceof MoneroWalletConfig) config = Object.assign({}, config.config);
     else if (typeof config === "object") config = Object.assign({}, config);
     else throw new MoneroError("config must be a MoneroWalletConfig or JavaScript object");
     this.config = config;
@@ -40,19 +51,30 @@ class MoneroWalletConfig {
     // normalize config
     this.setNetworkType(config.networkType);
     if (config.server) this.setServer(config.server);
-    delete this.config.server;
+    else if (config.serverUri) this.setServer({uri: config.serverUri, username: config.serverUsername, password: config.serverPassword, rejectUnauthorized: config.rejectUnauthorized});
+    this.setProxyToWorker(config.proxyToWorker);
+    this.config.serverUri = undefined;
+    this.config.serverUsername = undefined;
+    this.config.serverPassword = undefined;
+    this.config.rejectUnauthorized = undefined;
     
     // check for unsupported fields
     for (let key of Object.keys(this.config)) {
       if (!GenUtils.arrayContains(MoneroWalletConfig.SUPPORTED_FIELDS, key)) {
-        throw new MoneroError("Wallet config includes unsupported field: '" + key + "'");
+        throw new MoneroError("Unsupported field in MoneroWalletConfig: '" + key + "'");
       }
     }
+  }
+
+  copy() {
+    return new MoneroWalletConfig(this);
   }
   
   toJson() {
     let json = Object.assign({}, this.config);
-    json.fs = undefined; // remove filesystem
+    if (json.server) json.server = json.server.toJson();
+    json.fs = undefined;
+    json.connectionManager = undefined;
     return json;
   }
   
@@ -84,42 +106,56 @@ class MoneroWalletConfig {
   }
   
   getServer() {
-    return !this.config.serverUri ? undefined : new MoneroRpcConnection({uri: this.config.serverUri, username: this.config.serverUsername, password: this.config.serverPassword, rejectUnauthorized: this.config.rejectUnauthorized})
+    return this.config.server;
   }
   
   setServer(server) {
     if (server && !(server instanceof MoneroRpcConnection)) server = new MoneroRpcConnection(server);
-    this.config.serverUri = server === undefined ? undefined : server.getUri();
+    this.config.server = server;
     this.config.serverUsername = server === undefined ? undefined : server.getUsername();
     this.config.serverPassword = server === undefined ? undefined : server.getPassword();
-    this.config.rejectUnauthorized = server === undefined ? undefined : server.getRejectUnauthorized();
     return this;
   }
   
   getServerUri() {
-    return this.config.serverUri;
+    return this.config.server ? this.config.server.getUri() : undefined;
   }
   
   setServerUri(serverUri) {
-    this.config.serverUri = serverUri;
+    if (!serverUri) this.setServer(undefined);
+    else  {
+      if (!this.config.server) this.setServer(new MoneroRpcConnection(serverUri));
+      else this.config.server.setUri(serverUri);
+    }
     return this;
   }
   
   getServerUsername() {
-    return this.config.serverUsername;
+    return this.server ? server.getUsername() : undefined;
   }
   
   setServerUsername(serverUsername) {
     this.config.serverUsername = serverUsername;
+    if (this.config.serverUsername && this.config.serverPassword) this.config.server.setCredentials(this.config.serverUsername, this.config.serverPassword);
     return this;
   }
   
   getServerPassword() {
-    return this.config.serverPassword;
+    return this.server ? server.getPassword() : undefined;
   }
   
   setServerPassword(serverPassword) {
     this.config.serverPassword = serverPassword;
+    if (this.config.serverUsername && this.config.serverPassword) this.config.server.setCredentials(this.config.serverUsername, this.config.serverPassword);
+    return this;
+  }
+
+  getConnectionManager() {
+    return this.config.connectionManager;
+  }
+  
+  setConnectionManager(connectionManager) {
+    this.config.connectionManager = connectionManager;
     return this;
   }
   
@@ -132,12 +168,12 @@ class MoneroWalletConfig {
     return this;
   }
   
-  getMnemonic() {
-    return this.config.mnemonic;
+  getSeed() {
+    return this.config.seed;
   }
   
-  setMnemonic(mnemonic) {
-    this.config.mnemonic = mnemonic;
+  setSeed(seed) {
+    this.config.seed = seed;
     return this;
   }
   
@@ -147,6 +183,15 @@ class MoneroWalletConfig {
   
   setSeedOffset(seedOffset) {
     this.config.seedOffset = seedOffset;
+    return this;
+  }
+
+  isMultisig() {
+    return this.config.isMultisig;
+  }
+  
+  setIsMultisig(isMultisig) {
+    this.config.isMultisig = isMultisig;
     return this;
   }
   
@@ -210,6 +255,7 @@ class MoneroWalletConfig {
   
   setProxyToWorker(proxyToWorker) {
     this.config.proxyToWorker = proxyToWorker;
+    if (this.config.server) this.config.server.setProxyToWorker(proxyToWorker);
     return this;
   }
   
@@ -259,6 +305,6 @@ class MoneroWalletConfig {
   }
 }
 
-MoneroWalletConfig.SUPPORTED_FIELDS = ["path", "password", "networkType", "serverUri", "serverUsername", "serverPassword", "rejectUnauthorized", "mnemonic", "seedOffset", "primaryAddress", "privateViewKey", "privateSpendKey", "restoreHeight", "language", "saveCurrent", "proxyToWorker", "fs", "keysData", "cacheData", "accountLookahead", "subaddressLookahead"];
+MoneroWalletConfig.SUPPORTED_FIELDS = ["path", "password", "networkType", "server", "serverUri", "serverUsername", "serverPassword", "connectionManager", "rejectUnauthorized", "seed", "seedOffset", "isMultisig", "primaryAddress", "privateViewKey", "privateSpendKey", "restoreHeight", "language", "saveCurrent", "proxyToWorker", "fs", "keysData", "cacheData", "accountLookahead", "subaddressLookahead"];
 
 module.exports = MoneroWalletConfig;

@@ -4,7 +4,7 @@ const axios = require('axios');
  * Requests funds from the Melotools stagenet faucet
  */
 async function requestFunds(amount, address) {
-  const url = 'https://community.rino.io/faucet/stagenet/request-amount-transaction/';
+  const url = 'https://tools.rino.io/faucet/stagenet/request-amount-transaction/';
   const params = {destination_address: address, amount}
 
   // The auth token is hardcoded on the faucet, and it allows requests
